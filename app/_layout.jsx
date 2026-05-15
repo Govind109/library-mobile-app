@@ -118,6 +118,17 @@ function RootLayoutNav() {
               headerShadowVisible: false,
             }}
           />
+          <Stack.Screen
+            name="library-detail"
+            options={{
+              title: 'Library details',
+              headerShown: true,
+              headerStyle: { backgroundColor: palette.primary },
+              headerTintColor: palette.onPrimary,
+              headerTitleStyle: { fontWeight: '600', color: palette.onPrimary },
+              headerShadowVisible: false,
+            }}
+          />
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         </Stack>
       </AuthProvider>

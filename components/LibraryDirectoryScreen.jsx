@@ -5,8 +5,9 @@ import { publicLibraryDirectory, studentLibraryDirectory } from '@/lib/api/stude
 import { getApiBaseUrl } from '@/lib/config';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { Image } from 'expo-image';
-import { useFocusEffect } from '@react-navigation/native';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import * as Location from 'expo-location';
+import { useRouter } from 'expo-router';
+import { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Linking,
@@ -31,36 +32,8 @@ const AMENITY_LABELS = {
   separate_girls_section: 'Girls section',
 };
 
-function uniq(values) {
-  return [...new Set(values.filter(Boolean).map((value) => String(value).trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b));
-}
-
-function SelectBox({ label, value, placeholder, options, onSelect }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <View style={styles.selectWrap}>
-      <Text style={styles.selectLabel}>{label}</Text>
-      <Pressable style={styles.selectButton} onPress={() => setOpen((v) => !v)}>
-        <Text style={[styles.selectValue, !value && styles.selectPlaceholder]} numberOfLines={1}>
-          {value || placeholder}
-        </Text>
-        <FontAwesome name={open ? 'angle-up' : 'angle-down'} size={16} color={palette.textMuted} />
-      </Pressable>
-      {open ? (
-        <View style={styles.selectMenu}>
-          <Pressable style={styles.selectOption} onPress={() => { onSelect(''); setOpen(false); }}>
-            <Text style={styles.selectOptionText}>Any</Text>
-          </Pressable>
-          {options.map((option) => (
-            <Pressable key={option} style={styles.selectOption} onPress={() => { onSelect(option); setOpen(false); }}>
-              <Text style={styles.selectOptionText}>{option}</Text>
-            </Pressable>
-          ))}
-        </View>
-      ) : null}
-    </View>
-  );
-}
+const PAGE_SIZE = 10;
+const MAX_RESULTS = 50;
 
 function resolveMediaUrl(path) {
   if (!path) return null;
@@ -73,147 +46,192 @@ function feeLine(value) {
   return `From Rs.${Number(value).toLocaleString('en-IN')}/month`;
 }
 
-function findPincodeLocation(locations, pincode, city = '', area = '') {
-  const pin = String(pincode || '').trim();
-  if (!/^\d{6}$/.test(pin)) return null;
-  return locations.find((item) => item.pincode === pin && (!city || item.city === city) && (!area || item.area === area))
-    || locations.find((item) => item.pincode === pin && (!city || item.city === city))
-    || locations.find((item) => item.pincode === pin)
-    || null;
+function toNumber(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function distanceKm(from, row) {
+  if (!from) return null;
+  const lat2 = toNumber(row.latitude);
+  const lon2 = toNumber(row.longitude);
+  if (lat2 == null || lon2 == null) return null;
+  const toRad = (v) => (v * Math.PI) / 180;
+  const earthKm = 6371;
+  const dLat = toRad(lat2 - from.latitude);
+  const dLon = toRad(lon2 - from.longitude);
+  const lat1 = toRad(from.latitude);
+  const latB = toRad(lat2);
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(latB) * Math.sin(dLon / 2) ** 2;
+  return earthKm * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function distanceLabel(km) {
+  if (km == null) return null;
+  if (km < 1) return `${Math.round(km * 1000)} m away`;
+  return `${km.toFixed(km < 10 ? 1 : 0)} km away`;
+}
+
+function rowSearchText(row) {
+  return [
+    row.name,
+    row.listing_area,
+    row.city,
+    row.district,
+    row.state,
+    row.pincode,
+    row.listing_address,
+    row.address,
+  ].filter(Boolean).join(' ').toLowerCase();
 }
 
 export function LibraryDirectoryScreen({ publicMode = false }) {
   const insets = useSafeAreaInsets();
-  const { token, student } = useAuth();
-  const [filters, setFilters] = useState({
-    q: '',
-    state: student?.state || 'Bihar',
-    area: '',
-    city: student?.city || '',
-    district: '',
-    pincode: student?.pincode || '',
-  });
+  const router = useRouter();
+  const { token } = useAuth();
   const [searchText, setSearchText] = useState('');
   const [rows, setRows] = useState([]);
-  const [areas, setAreas] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [userLocation, setUserLocation] = useState(null);
+  const [locationBusy, setLocationBusy] = useState(false);
+  const [locationMessage, setLocationMessage] = useState('');
+  const [hasSearched, setHasSearched] = useState(false);
+  const [activeQuery, setActiveQuery] = useState('');
+  const [activeForceAll, setActiveForceAll] = useState(false);
+  const [resultLimit, setResultLimit] = useState(PAGE_SIZE);
+  const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
 
   const canUseLoggedEndpoint = !publicMode && !!token;
 
-  const load = useCallback(async () => {
-    setError(null);
-    setLoading(true);
-    try {
-      const data = canUseLoggedEndpoint
-        ? await studentLibraryDirectory(token, filters)
-        : await publicLibraryDirectory(filters);
-      setRows(data.rows || []);
-      setAreas(data.areas || []);
-    } catch (e) {
-      setRows([]);
-      setError(e?.message || 'Unable to load libraries.');
-    } finally {
-      setLoading(false);
+  const load = useCallback(async (qText = '', options = {}) => {
+    const showResults = options.showResults !== false;
+    const forceAll = options.forceAll === true;
+    const limit = Math.min(Number(options.limit || PAGE_SIZE) || PAGE_SIZE, MAX_RESULTS);
+    if (showResults) {
+      setError(null);
+      setLoading(true);
     }
-  }, [canUseLoggedEndpoint, token, filters]);
-
-  useFocusEffect(
-    useCallback(() => {
-      void load();
-    }, [load]),
-  );
+    try {
+      const q = String(qText || '').trim();
+      const params = { limit, ...(q && !forceAll ? { q, search: q } : {}) };
+      const data = canUseLoggedEndpoint
+        ? await studentLibraryDirectory(token, params)
+        : await publicLibraryDirectory(params);
+      setRows(data.rows || []);
+      if (showResults) {
+        setActiveQuery(forceAll ? '' : q);
+        setActiveForceAll(forceAll);
+        setResultLimit(limit);
+        setHasSearched(true);
+      }
+    } catch (e) {
+      if (showResults) {
+        setRows([]);
+        setError(e?.message || 'Unable to load libraries.');
+      }
+    } finally {
+      if (showResults) setLoading(false);
+    }
+  }, [canUseLoggedEndpoint, token]);
 
   async function onRefresh() {
     setRefreshing(true);
     try {
-      await load();
+      if (hasSearched) {
+        await load(activeQuery, { showResults: true, forceAll: activeForceAll, limit: resultLimit });
+      } else {
+        await load('', { showResults: false, forceAll: true, limit: PAGE_SIZE });
+      }
     } finally {
       setRefreshing(false);
     }
   }
 
-  const popularAreas = useMemo(() => areas.slice(0, 8), [areas]);
-  const allLocations = useMemo(() => {
-    const fromApi = areas.map((item) => ({
-      state: item.state || 'Bihar',
-      city: item.city || '',
-      district: item.district || '',
-      area: item.listing_area || '',
-      pincode: item.pincode || '',
-    }));
-    return fromApi;
-  }, [areas]);
-  const stateOptions = useMemo(() => uniq(['Bihar', ...allLocations.map((item) => item.state)]), [allLocations]);
-  const districtOptions = useMemo(
-    () => uniq(allLocations.filter((item) => !filters.state || item.state === filters.state).map((item) => item.district)),
-    [allLocations, filters.state],
-  );
-  const cityOptions = useMemo(
-    () => uniq(allLocations.filter((item) => (!filters.state || item.state === filters.state) && (!filters.district || item.district === filters.district)).map((item) => item.city)),
-    [allLocations, filters.district, filters.state],
-  );
-  const pincodeOptions = useMemo(
-    () =>
-      uniq(
-        allLocations
-          .filter(
-            (item) =>
-              (!filters.state || item.state === filters.state) &&
-              (!filters.city || item.city === filters.city) &&
-              (!filters.area || item.area === filters.area),
-          )
-          .map((item) => item.pincode)
-          .filter((pin) => /^\d{6}$/.test(String(pin || '').trim())),
-      ),
-    [allLocations, filters.area, filters.city, filters.state],
-  );
+  const displayRows = useMemo(() => {
+    const q = activeQuery.trim().toLowerCase();
+    const filtered = q ? rows.filter((row) => rowSearchText(row).includes(q)) : rows;
+    return filtered
+      .map((row) => ({ ...row, distance_km: distanceKm(userLocation, row) }))
+      .sort((a, b) => {
+        if (!userLocation) return 0;
+        if (a.distance_km == null && b.distance_km == null) return 0;
+        if (a.distance_km == null) return 1;
+        if (b.distance_km == null) return -1;
+        return a.distance_km - b.distance_km;
+      });
+  }, [activeQuery, rows, userLocation]);
 
-  const villagesInSelectedCity = useMemo(() => {
-    const st = filters.state || 'Bihar';
-    const city = String(filters.city || '').trim();
-    if (!city || st !== 'Bihar') return [];
-    return allLocations.filter((r) => r.city === city).map((r) => r.area);
-  }, [allLocations, filters.city, filters.state]);
-
-  const areaSuggestions = useMemo(() => {
-    const q = String(filters.area || '').trim().toLowerCase();
-    if (q.length < 2 || !villagesInSelectedCity.length) return [];
-    const out = [];
-    for (const a of villagesInSelectedCity) {
-      if (a.toLowerCase().includes(q)) {
-        out.push(a);
-        if (out.length >= 16) break;
-      }
+  function submitSearch(qText = searchText) {
+    const q = String(qText || '').trim();
+    setSearchText(q);
+    if (!q) {
+      setHasSearched(false);
+      setActiveQuery('');
+      setActiveForceAll(false);
+      setLocationMessage('Enter an address, city, or pincode, or use your location.');
+      return;
     }
-    return out;
-  }, [filters.area, villagesInSelectedCity]);
-
-  function chooseLocationPatch(patch) {
-    setFilters((f) => ({ ...f, ...patch }));
+    setLocationMessage('');
+    void load(q, { showResults: true, limit: PAGE_SIZE });
   }
 
-  function applyPincode(pincodeText) {
-    const pincode = String(pincodeText || '').replace(/\D/g, '').slice(0, 6);
-    setFilters((f) => {
-      const match = findPincodeLocation(allLocations, pincode, f.city, f.area);
-      if (!match) return { ...f, pincode };
-      return {
-        ...f,
-        pincode,
-        state: match.state || f.state || 'Bihar',
-        city: match.city || f.city,
-        area: match.area || f.area,
-      };
+  async function useMyLocation() {
+    setLocationBusy(true);
+    setLocationMessage('');
+    try {
+      const permission = await Location.requestForegroundPermissionsAsync();
+      if (permission.status !== 'granted') {
+        throw new Error('Allow location permission to see nearest libraries.');
+      }
+      const position = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      setUserLocation({
+        latitude: position.coords.latitude,
+        longitude: position.coords.longitude,
+      });
+      setSearchText('');
+      await load('', { showResults: true, forceAll: true, limit: PAGE_SIZE });
+      setLocationMessage('Nearest libraries are sorted first.');
+    } catch (err) {
+      setLocationMessage(err?.message || 'Location is not available on this device.');
+    } finally {
+      setLocationBusy(false);
+    }
+  }
+
+  function openDetails(row) {
+    router.push({
+      pathname: '/library-detail',
+      params: { library: encodeURIComponent(JSON.stringify(row)) },
     });
   }
+
+  async function loadMore(all = false) {
+    if (loadingMore || loading) return;
+    const nextLimit = all ? MAX_RESULTS : Math.min(resultLimit + PAGE_SIZE, MAX_RESULTS);
+    if (nextLimit <= resultLimit) return;
+    setLoadingMore(true);
+    try {
+      await load(activeQuery, {
+        showResults: false,
+        forceAll: activeForceAll,
+        limit: nextLimit,
+      });
+      setResultLimit(nextLimit);
+    } finally {
+      setLoadingMore(false);
+    }
+  }
+
+  const canLoadMore = hasSearched && !loading && !error && rows.length >= resultLimit && resultLimit < MAX_RESULTS;
 
   const body = (
     <ScrollView
       contentContainerStyle={[styles.container, { paddingBottom: insets.bottom + layout.space.xxl }]}
+      keyboardShouldPersistTaps="handled"
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void onRefresh()} colors={[palette.primary]} />}>
-      <View style={styles.hero}>
+      {/* <View style={styles.hero}>
         <View style={styles.heroIcon}>
           <FontAwesome name="map-marker" size={22} color={palette.primary} />
         </View>
@@ -221,83 +239,42 @@ export function LibraryDirectoryScreen({ publicMode = false }) {
           <Text style={styles.kicker}>Library discovery</Text>
           <Text style={styles.title}>Find libraries near your area</Text>
           <Text style={styles.subtitle}>
-            {canUseLoggedEndpoint ? 'Use your saved address or search any city, area, or pincode.' : 'Search public libraries before signing in.'}
+            Enter an area, city, pincode, or library name. Use distance when you want the nearest options first.
           </Text>
         </View>
-      </View>
+      </View> */}
 
       <View style={styles.searchCard}>
-        <TextInput
-          style={styles.input}
-          value={searchText}
-          onChangeText={(q) => {
-            setSearchText(q);
-            setFilters((f) => ({ ...f, q }));
-          }}
-          placeholder="Search library, area, address, or pincode"
-          placeholderTextColor={palette.textHint}
-          returnKeyType="search"
-          onSubmitEditing={() => void load()}
-        />
-        <View style={styles.dropdownGrid}>
-          <SelectBox label="State" value={filters.state} placeholder="Select state" options={stateOptions} onSelect={(state) => chooseLocationPatch({ state, district: '', city: '', area: '', pincode: '' })} />
-          <SelectBox label="District" value={filters.district} placeholder="Select district" options={districtOptions} onSelect={(district) => chooseLocationPatch({ district, city: '', area: '', pincode: '' })} />
-          <SelectBox label="City" value={filters.city} placeholder="Select city" options={cityOptions} onSelect={(city) => chooseLocationPatch({ city, area: '', pincode: '' })} />
-          <View style={styles.selectWrap}>
-            <Text style={styles.selectLabel}>Local area</Text>
+        <View style={styles.searchRow}>
+          <View style={styles.searchInputWrap}>
             <TextInput
               style={styles.input}
-              value={filters.area}
-              onChangeText={(area) => chooseLocationPatch({ area })}
-              placeholder="Village / locality (optional)"
+              value={searchText}
+              onChangeText={setSearchText}
+              placeholder="Enter area, city, pincode, or library"
               placeholderTextColor={palette.textHint}
+              returnKeyType="search"
+              onSubmitEditing={() => submitSearch()}
             />
-            {areaSuggestions.length ? (
-              <View style={styles.suggestBox}>
-                {areaSuggestions.map((a) => (
-                  <Pressable
-                    key={a}
-                    style={styles.suggestRow}
-                    onPress={() => {
-                      chooseLocationPatch({ area: a });
-                    }}>
-                    <Text style={styles.suggestText}>{a}</Text>
-                  </Pressable>
-                ))}
-              </View>
-            ) : null}
           </View>
-          <SelectBox label="Pincode" value={filters.pincode} placeholder="Select pincode" options={pincodeOptions} onSelect={(pincode) => {
-            const match = findPincodeLocation(allLocations, pincode, filters.city, filters.area);
-            chooseLocationPatch({
-              pincode,
-              state: match?.state || filters.state || 'Bihar',
-              city: match?.city || filters.city,
-              area: match?.area || filters.area,
-            });
-          }} />
-        </View>
-        <View style={styles.twoCols}>
-          <TextInput style={[styles.input, styles.flex]} value={filters.pincode} onChangeText={applyPincode} placeholder="Or type pincode" keyboardType="number-pad" placeholderTextColor={palette.textHint} maxLength={6} />
-          <Pressable style={styles.searchBtn} onPress={() => void load()}>
-            <FontAwesome name="search" size={15} color="#fff" />
-            <Text style={styles.searchText}>Search</Text>
+          <Pressable style={[styles.searchBtn, loading && styles.searchBtnDisabled]} onPress={() => submitSearch()} disabled={loading}>
+            {loading ? <ActivityIndicator size="small" color="#fff" /> : <FontAwesome name="search" size={15} color="#fff" />}
+            <Text style={styles.searchText}>{loading ? 'Searching' : 'Search'}</Text>
           </Pressable>
         </View>
+        <Pressable style={styles.locationBtn} onPress={useMyLocation} disabled={locationBusy}>
+          {locationBusy ? <ActivityIndicator size="small" color={palette.primary} /> : <FontAwesome name="location-arrow" size={15} color={palette.primary} />}
+          <Text style={styles.locationText}>{locationBusy ? 'Calculating distance...' : 'Calculate distance / nearest'}</Text>
+        </Pressable>
+        {locationMessage ? <Text style={styles.locationHint}>{locationMessage}</Text> : null}
       </View>
 
-      {popularAreas.length ? (
-        <View style={styles.areaWrap}>
-          {popularAreas.map((item) => (
-            <Pressable key={`${item.state}-${item.city}-${item.listing_area}-${item.pincode}`} style={styles.areaChip} onPress={() => setFilters((f) => ({ ...f, state: item.state || 'Bihar', district: item.district || f.district, area: item.listing_area || '', city: item.city || f.city, pincode: item.pincode || '' }))}>
-              <Text style={styles.areaChipText}>{item.listing_area || 'Area'}{item.city ? `, ${item.city}` : ''}{item.pincode ? ` - ${item.pincode}` : ''}</Text>
-              <Text style={styles.areaChipCount}>{item.total}</Text>
-            </Pressable>
-          ))}
+      {!hasSearched ? (
+        <View style={styles.centerBox}>
+          <Text style={styles.emptyTitle}>Search a location</Text>
+          <Text style={styles.emptySub}>Enter an address, city, or pincode, or sort by your current location.</Text>
         </View>
-      ) : null}
-
-      {loading ? (
+      ) : loading ? (
         <View style={styles.centerBox}>
           <ActivityIndicator color={palette.primary} />
         </View>
@@ -305,17 +282,19 @@ export function LibraryDirectoryScreen({ publicMode = false }) {
         <View style={styles.centerBox}>
           <Text style={styles.errorText}>{error}</Text>
         </View>
-      ) : rows.length === 0 ? (
+      ) : displayRows.length === 0 ? (
         <View style={styles.centerBox}>
-          <Text style={styles.emptyTitle}>No libraries found</Text>
-          <Text style={styles.emptySub}>Try a nearby area, city, or pincode.</Text>
+          <Text style={styles.emptyTitle}>No library found</Text>
+          <Text style={styles.emptySub}>No library is available for this area yet.</Text>
         </View>
       ) : (
-        rows.map((row) => {
+        <>
+        {displayRows.map((row) => {
           const logoUri = resolveMediaUrl(row.logo_url);
+          const dist = distanceLabel(row.distance_km);
           return (
           <View key={row.id} style={styles.card}>
-            <View style={styles.cardTop}>
+            <Pressable style={styles.cardTop} onPress={() => openDetails(row)}>
               {logoUri ? (
                 <Image source={{ uri: logoUri }} style={styles.cardLogoImg} contentFit="cover" transition={120} />
               ) : (
@@ -329,14 +308,13 @@ export function LibraryDirectoryScreen({ publicMode = false }) {
                   {[row.listing_area, row.city, row.pincode].filter(Boolean).join(' - ') || row.address || 'Address not set'}
                 </Text>
               </View>
-            </View>
+              {dist ? <Text style={styles.distanceBadge}>{dist}</Text> : null}
+            </Pressable>
             {row.listing_description ? <Text style={styles.desc} numberOfLines={3}>{row.listing_description}</Text> : null}
             <View style={styles.metaRow}>
-              {feeLine(row.monthly_fee_min) ? <Text style={styles.pill}>{feeLine(row.monthly_fee_min)}</Text> : null}
+              {feeLine(row.monthly_fee_min) ? <Text style={styles.pillPrimary}>{feeLine(row.monthly_fee_min)}</Text> : null}
               {row.seat_capacity ? <Text style={styles.pill}>{row.seat_capacity} seats</Text> : null}
-              {row.active_students_count != null && row.active_students_count > 0 ? (
-                <Text style={styles.pill}>{row.active_students_count} students</Text>
-              ) : null}
+              
             </View>
             {Array.isArray(row.amenities) && row.amenities.length ? (
               <View style={styles.metaRow}>
@@ -353,6 +331,10 @@ export function LibraryDirectoryScreen({ publicMode = false }) {
               </Pressable>
             ) : null}
             <View style={styles.actions}>
+              <Pressable style={styles.actionBtnPrimary} onPress={() => openDetails(row)}>
+                <FontAwesome name="info-circle" size={14} color="#fff" />
+                <Text style={styles.actionTextPrimary}>View details</Text>
+              </Pressable>
               {row.contact_phone ? (
                 <Pressable style={styles.actionBtn} onPress={() => Linking.openURL(`tel:${row.contact_phone}`)}>
                   <FontAwesome name="phone" size={14} color={palette.primary} />
@@ -368,7 +350,19 @@ export function LibraryDirectoryScreen({ publicMode = false }) {
             </View>
           </View>
           );
-        })
+        })}
+        {canLoadMore ? (
+          <View style={styles.paginationRow}>
+            <Pressable style={[styles.loadMoreBtn, loadingMore && styles.searchBtnDisabled]} onPress={() => void loadMore(false)} disabled={loadingMore}>
+              {loadingMore ? <ActivityIndicator size="small" color={palette.primary} /> : <FontAwesome name="plus" size={14} color={palette.primary} />}
+              <Text style={styles.loadMoreText}>{loadingMore ? 'Loading more...' : 'Load more'}</Text>
+            </Pressable>
+            <Pressable style={[styles.loadAllBtn, loadingMore && styles.searchBtnDisabled]} onPress={() => void loadMore(true)} disabled={loadingMore}>
+              <Text style={styles.loadAllText}>Load all</Text>
+            </Pressable>
+          </View>
+        ) : null}
+        </>
       )}
     </ScrollView>
   );
@@ -387,39 +381,29 @@ const styles = StyleSheet.create({
   subtitle: { marginTop: 6, fontSize: 14, lineHeight: 20, color: palette.textSecondary },
   searchCard: { backgroundColor: palette.surface, borderRadius: layout.radius.xl, padding: layout.space.lg, marginBottom: layout.space.md, ...shadow.sm },
   input: { minHeight: 46, borderWidth: StyleSheet.hairlineWidth, borderColor: palette.border, borderRadius: layout.radius.md, paddingHorizontal: 12, color: palette.text, backgroundColor: '#fff', marginBottom: 10 },
-  dropdownGrid: { gap: 10, marginBottom: 10 },
-  suggestBox: { marginTop: 4, marginBottom: 6, borderWidth: StyleSheet.hairlineWidth, borderColor: palette.border, borderRadius: layout.radius.md, backgroundColor: '#fff', overflow: 'hidden' },
-  suggestRow: { flexDirection: 'row', alignItems: 'center', gap: 9, paddingHorizontal: 12, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: palette.borderSubtle },
-  suggestText: { flex: 1, color: palette.text, fontWeight: '600', fontSize: 13 },
-  selectWrap: { position: 'relative', zIndex: 1 },
-  selectLabel: { marginBottom: 6, color: palette.textMuted, fontSize: 11, fontWeight: '900', letterSpacing: 0.7, textTransform: 'uppercase' },
-  selectButton: { minHeight: 46, borderWidth: StyleSheet.hairlineWidth, borderColor: palette.border, borderRadius: layout.radius.md, paddingHorizontal: 12, backgroundColor: '#fff', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
-  selectValue: { flex: 1, color: palette.text, fontWeight: '700' },
-  selectPlaceholder: { color: palette.textHint, fontWeight: '500' },
-  selectMenu: { marginTop: 6, borderWidth: StyleSheet.hairlineWidth, borderColor: palette.border, borderRadius: layout.radius.md, backgroundColor: '#fff', overflow: 'hidden' },
-  selectOption: { paddingHorizontal: 12, paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: palette.borderSubtle },
-  selectOptionText: { color: palette.text, fontWeight: '700' },
-  twoCols: { flexDirection: 'row', gap: 10 },
-  flex: { flex: 1 },
-  searchBtn: { minHeight: 46, flex: 1, borderRadius: layout.radius.md, backgroundColor: palette.primary, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  searchRow: { flexDirection: 'row', gap: 10, alignItems: 'flex-start' },
+  searchInputWrap: { flex: 1, minWidth: 0 },
+  searchBtn: { minHeight: 46, minWidth: 104, borderRadius: layout.radius.md, backgroundColor: palette.primary, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: 12 },
+  searchBtnDisabled: { opacity: 0.72 },
   searchText: { color: '#fff', fontWeight: '800' },
-  areaWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: layout.space.md },
-  areaChip: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: palette.primarySoft, borderRadius: layout.radius.full, paddingHorizontal: 12, paddingVertical: 8 },
-  areaChipText: { color: palette.primaryDark, fontWeight: '700', fontSize: 12 },
-  areaChipCount: { color: palette.primary, fontWeight: '900', fontSize: 12 },
+  locationBtn: { minHeight: 42, marginTop: 4, borderWidth: StyleSheet.hairlineWidth, borderColor: palette.border, borderRadius: layout.radius.md, backgroundColor: '#fff', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  locationText: { color: palette.primary, fontWeight: '800', fontSize: 13 },
+  locationHint: { marginTop: 8, color: palette.textMuted, fontSize: 12, fontWeight: '600' },
   centerBox: { minHeight: 140, alignItems: 'center', justifyContent: 'center' },
   errorText: { color: palette.danger, fontWeight: '700' },
   emptyTitle: { color: palette.text, fontWeight: '800', fontSize: 16 },
   emptySub: { marginTop: 4, color: palette.textSecondary },
-  card: { backgroundColor: palette.surface, borderRadius: layout.radius.xl, padding: layout.space.lg, marginBottom: layout.space.md, ...shadow.sm },
-  cardTop: { flexDirection: 'row', gap: 12 },
-  logo: { width: 44, height: 44, borderRadius: 14, backgroundColor: palette.primarySoft, alignItems: 'center', justifyContent: 'center' },
-  cardLogoImg: { width: 44, height: 44, borderRadius: 14, backgroundColor: palette.surfaceMuted, borderWidth: StyleSheet.hairlineWidth, borderColor: palette.border },
+  card: { backgroundColor: palette.surface, borderRadius: layout.radius.xl, padding: layout.space.lg, marginBottom: layout.space.md, borderWidth: StyleSheet.hairlineWidth, borderColor: palette.borderSubtle, ...shadow.sm },
+  cardTop: { flexDirection: 'row', gap: 12, alignItems: 'center', paddingBottom: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: palette.borderSubtle },
+  logo: { width: 56, height: 56, borderRadius: 18, backgroundColor: palette.primarySoft, alignItems: 'center', justifyContent: 'center' },
+  cardLogoImg: { width: 56, height: 56, borderRadius: 18, backgroundColor: palette.surfaceMuted, borderWidth: StyleSheet.hairlineWidth, borderColor: palette.border },
   cardMain: { flex: 1, minWidth: 0 },
+  distanceBadge: { alignSelf: 'flex-start', backgroundColor: '#f0fdf4', color: '#047857', borderRadius: layout.radius.full, paddingHorizontal: 9, paddingVertical: 6, fontSize: 11, fontWeight: '900' },
   cardTitle: { fontSize: 17, fontWeight: '900', color: palette.text },
   cardMeta: { marginTop: 4, fontSize: 13, color: palette.textSecondary, lineHeight: 18 },
   desc: { marginTop: 12, fontSize: 14, color: palette.textSecondary, lineHeight: 20 },
   metaRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 12 },
+  pillPrimary: { backgroundColor: palette.primary, color: '#fff', borderRadius: layout.radius.full, paddingHorizontal: 10, paddingVertical: 7, fontSize: 12, fontWeight: '900' },
   pill: { backgroundColor: '#eef2ff', color: '#3730a3', borderRadius: layout.radius.full, paddingHorizontal: 10, paddingVertical: 7, fontSize: 12, fontWeight: '800' },
   softPill: { backgroundColor: '#ecfdf5', color: '#047857', borderRadius: layout.radius.full, paddingHorizontal: 10, paddingVertical: 7, fontSize: 12, fontWeight: '800' },
   address: { marginTop: 12, color: palette.textMuted, fontSize: 13, lineHeight: 18 },
@@ -427,6 +411,13 @@ const styles = StyleSheet.create({
   emailIcon: { marginRight: 8 },
   emailText: { flex: 1, color: palette.primary, fontSize: 13, fontWeight: '700' },
   actions: { flexDirection: 'row', gap: 10, marginTop: 14 },
+  actionBtnPrimary: { flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: palette.primary, borderRadius: layout.radius.md, paddingHorizontal: 12, paddingVertical: 9 },
+  actionTextPrimary: { color: '#fff', fontWeight: '900' },
   actionBtn: { flexDirection: 'row', alignItems: 'center', gap: 7, borderWidth: StyleSheet.hairlineWidth, borderColor: palette.border, borderRadius: layout.radius.md, paddingHorizontal: 12, paddingVertical: 9 },
   actionText: { color: palette.primary, fontWeight: '800' },
+  paginationRow: { flexDirection: 'row', gap: 10, marginTop: 4, marginBottom: layout.space.md },
+  loadMoreBtn: { flex: 1, minHeight: 44, borderRadius: layout.radius.md, borderWidth: StyleSheet.hairlineWidth, borderColor: palette.border, backgroundColor: palette.surface, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  loadMoreText: { color: palette.primary, fontWeight: '900' },
+  loadAllBtn: { minHeight: 44, borderRadius: layout.radius.md, backgroundColor: palette.primarySoft, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 14 },
+  loadAllText: { color: palette.primaryDark, fontWeight: '900' },
 });

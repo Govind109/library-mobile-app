@@ -6,13 +6,13 @@ import {
   primaryButtonText,
   shadow,
   typography,
-} from '@/constants/Theme';
-import { useAuth } from '@/context/AuthContext';
-import { ApiError } from '@/lib/api/studentApi';
-import FontAwesome from '@expo/vector-icons/FontAwesome';
-import { StatusBar } from 'expo-status-bar';
-import { Redirect, useRouter } from 'expo-router';
-import { useState } from 'react';
+} from "@/constants/Theme";
+import { useAuth } from "@/context/AuthContext";
+import { ApiError } from "@/lib/api/studentApi";
+import FontAwesome from "@expo/vector-icons/FontAwesome";
+import { StatusBar } from "expo-status-bar";
+import { Redirect, useRouter } from "expo-router";
+import { useRef, useState } from "react";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -23,15 +23,18 @@ import {
   Text,
   TextInput,
   View,
-} from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+  Image,
+} from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 export default function LoginScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { token, ready, login } = useAuth();
-  const [loginId, setLoginId] = useState('');
-  const [password, setPassword] = useState('');
+  const loginIdRef = useRef(null);
+  const passwordRef = useRef(null);
+  const [loginId, setLoginId] = useState("");
+  const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
@@ -46,9 +49,9 @@ export default function LoginScreen() {
     setBusy(true);
     try {
       await login(loginId.trim(), password);
-      router.replace('/(tabs)');
+      router.replace("/(tabs)");
     } catch (e) {
-      const msg = e instanceof ApiError ? e.message : 'Something went wrong.';
+      const msg = e instanceof ApiError ? e.message : "Something went wrong.";
       setError(msg);
     } finally {
       setBusy(false);
@@ -62,21 +65,29 @@ export default function LoginScreen() {
       <StatusBar style="light" />
       <KeyboardAvoidingView
         style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}>
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}
+      >
         <ScrollView
           bounces={false}
           showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
+          keyboardShouldPersistTaps="always"
           contentContainerStyle={[
             styles.scrollContent,
             { paddingBottom: Math.max(insets.bottom, layout.space.xl) },
-          ]}>
-          <View style={[styles.hero, { paddingTop: insets.top + layout.space.md }]}>
+          ]}
+        >
+          <View
+            style={[styles.hero, { paddingTop: insets.top + layout.space.md }]}
+          >
             <View style={styles.blobA} pointerEvents="none" />
             <View style={styles.blobB} pointerEvents="none" />
             <View style={styles.brandMark}>
-              <FontAwesome name="book" size={28} color={palette.onPrimary} />
+              <Image
+                source={require("../assets/images/icon.png")}
+                style={styles.brandLogo}
+                resizeMode="contain"
+              />
             </View>
             <Text style={styles.brandName}>KYPS Library</Text>
             <Text style={styles.brandTag}>Student portal</Text>
@@ -85,21 +96,28 @@ export default function LoginScreen() {
           <View style={[styles.card, card()]}>
             <Text style={styles.cardKicker}>Account</Text>
             <Text style={styles.cardTitle}>Sign in</Text>
-            <Text style={styles.cardLead}>Use the login ID and password from your library.</Text>
+            <Text style={styles.cardLead}>
+              Use the login ID and password from your library.
+            </Text>
 
             <Text style={styles.label}>Login ID</Text>
-            <View
+            <Pressable
               style={[
                 styles.inputShell,
-                focused === 'loginId' && styles.inputShellFocused,
-              ]}>
+                focused === "loginId" && styles.inputShellFocused,
+              ]}
+              onPress={() => loginIdRef.current?.focus()}
+            >
               <FontAwesome
                 name="user"
                 size={18}
-                color={focused === 'loginId' ? palette.primary : palette.textHint}
+                color={
+                  focused === "loginId" ? palette.primary : palette.textHint
+                }
                 style={styles.inputIcon}
               />
               <TextInput
+                ref={loginIdRef}
                 style={styles.input}
                 autoCapitalize="none"
                 autoCorrect={false}
@@ -107,59 +125,80 @@ export default function LoginScreen() {
                 onChangeText={setLoginId}
                 placeholder="Your student login ID"
                 placeholderTextColor={palette.textHint}
-                onFocus={() => setFocused('loginId')}
-                onBlur={() => setFocused((f) => (f === 'loginId' ? null : f))}
+                onFocus={() => setFocused("loginId")}
+                onBlur={() => setFocused((f) => (f === "loginId" ? null : f))}
                 editable={!busy}
                 returnKeyType="next"
-                textContentType="username"
+                onSubmitEditing={() => passwordRef.current?.focus()}
+                blurOnSubmit={false}
+                textContentType="none"
+                autoComplete="off"
+                importantForAutofill="no"
               />
-            </View>
+            </Pressable>
 
             <Text style={[styles.label, styles.labelSpaced]}>Password</Text>
-            <View
+            <Pressable
               style={[
                 styles.inputShell,
-                focused === 'password' && styles.inputShellFocused,
-              ]}>
+                focused === "password" && styles.inputShellFocused,
+              ]}
+              onPress={() => passwordRef.current?.focus()}
+            >
               <FontAwesome
                 name="lock"
                 size={18}
-                color={focused === 'password' ? palette.primary : palette.textHint}
+                color={
+                  focused === "password" ? palette.primary : palette.textHint
+                }
                 style={styles.inputIcon}
               />
               <TextInput
+                ref={passwordRef}
                 style={[styles.input, styles.inputFlex]}
                 secureTextEntry={!showPassword}
                 value={password}
                 onChangeText={setPassword}
                 placeholder="Password"
                 placeholderTextColor={palette.textHint}
-                onFocus={() => setFocused('password')}
-                onBlur={() => setFocused((f) => (f === 'password' ? null : f))}
+                autoCapitalize="none"
+                autoCorrect={false}
+                autoComplete="off"
+                importantForAutofill="no"
+                onFocus={() => setFocused("password")}
+                onBlur={() => setFocused((f) => (f === "password" ? null : f))}
                 editable={!busy}
                 returnKeyType="go"
                 onSubmitEditing={() => {
                   if (canSubmit) void onSubmit();
                 }}
-                textContentType="password"
+                textContentType="none"
               />
               <Pressable
                 hitSlop={12}
                 onPress={() => setShowPassword((v) => !v)}
                 style={styles.eyeBtn}
                 accessibilityRole="button"
-                accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}>
+                accessibilityLabel={
+                  showPassword ? "Hide password" : "Show password"
+                }
+              >
                 <FontAwesome
-                  name={showPassword ? 'eye-slash' : 'eye'}
+                  name={showPassword ? "eye-slash" : "eye"}
                   size={18}
                   color={palette.textMuted}
                 />
               </Pressable>
-            </View>
+            </Pressable>
 
             {error ? (
               <View style={styles.errorBox} accessibilityLiveRegion="polite">
-                <FontAwesome name="exclamation-circle" size={16} color={palette.danger} style={styles.errorIcon} />
+                <FontAwesome
+                  name="exclamation-circle"
+                  size={16}
+                  color={palette.danger}
+                  style={styles.errorIcon}
+                />
                 <Text style={styles.errorText}>{error}</Text>
               </View>
             ) : null}
@@ -173,7 +212,8 @@ export default function LoginScreen() {
               ]}
               onPress={() => void onSubmit()}
               disabled={!canSubmit}
-              android_ripple={{ color: 'rgba(255,255,255,0.2)' }}>
+              android_ripple={{ color: "rgba(255,255,255,0.2)" }}
+            >
               {busy ? (
                 <ActivityIndicator color={palette.onPrimary} />
               ) : (
@@ -183,17 +223,34 @@ export default function LoginScreen() {
 
             <View style={styles.trustRow}>
               <FontAwesome name="shield" size={14} color={palette.textHint} />
-              <Text style={[styles.trustText, styles.trustTextPad]}>Encrypted session after sign-in</Text>
+              <Text style={[styles.trustText, styles.trustTextPad]}>
+                Encrypted session after sign-in
+              </Text>
             </View>
 
             <Pressable
-              style={({ pressed }) => [styles.browseLibraries, pressed && styles.browseLibrariesPressed]}
-              onPress={() => router.push('/libraries')}
+              style={({ pressed }) => [
+                styles.browseLibraries,
+                pressed && styles.browseLibrariesPressed,
+              ]}
+              onPress={() => router.push("/libraries")}
               accessibilityRole="link"
-              accessibilityLabel="Browse public libraries without signing in">
-              <FontAwesome name="map-marker" size={16} color={palette.primary} style={styles.browseIcon} />
-              <Text style={styles.browseLibrariesText}>Find libraries near you</Text>
-              <FontAwesome name="angle-right" size={16} color={palette.textMuted} />
+              accessibilityLabel="Browse public libraries without signing in"
+            >
+              <FontAwesome
+                name="map-marker"
+                size={16}
+                color={palette.primary}
+                style={styles.browseIcon}
+              />
+              <Text style={styles.browseLibrariesText}>
+                Find libraries near you
+              </Text>
+              <FontAwesome
+                name="angle-right"
+                size={16}
+                color={palette.textMuted}
+              />
             </Pressable>
           </View>
         </ScrollView>
@@ -217,23 +274,23 @@ const styles = StyleSheet.create({
     backgroundColor: palette.primary,
     paddingHorizontal: layout.space.xl,
     paddingBottom: layout.space.xxl + layout.space.lg,
-    overflow: 'hidden',
+    overflow: "hidden",
   },
   blobA: {
-    position: 'absolute',
+    position: "absolute",
     width: 220,
     height: 220,
     borderRadius: 110,
-    backgroundColor: 'rgba(255,255,255,0.06)',
+    backgroundColor: "rgba(255,255,255,0.06)",
     top: -40,
     right: -60,
   },
   blobB: {
-    position: 'absolute',
+    position: "absolute",
     width: 140,
     height: 140,
     borderRadius: 70,
-    backgroundColor: 'rgba(255,255,255,0.05)',
+    backgroundColor: "rgba(255,255,255,0.05)",
     bottom: 20,
     left: -50,
   },
@@ -241,24 +298,30 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 16,
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: "rgba(255,255,255,0.15)",
+    alignItems: "center",
+    justifyContent: "center",
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(255,255,255,0.25)',
+    borderColor: "rgba(255,255,255,0.25)",
+    overflow: "hidden",
+  },
+  brandLogo: {
+    width: 48,
+    height: 48,
+    borderRadius: 12,
   },
   brandName: {
     marginTop: layout.space.lg,
     fontSize: 26,
-    fontWeight: '700',
+    fontWeight: "700",
     letterSpacing: -0.5,
     color: palette.onPrimary,
   },
   brandTag: {
     marginTop: layout.space.xs,
     fontSize: 15,
-    fontWeight: '500',
-    color: 'rgba(255,255,255,0.78)',
+    fontWeight: "500",
+    color: "rgba(255,255,255,0.78)",
     letterSpacing: -0.2,
   },
   card: {
@@ -284,7 +347,7 @@ const styles = StyleSheet.create({
   },
   label: {
     ...typography.caption,
-    fontWeight: '600',
+    fontWeight: "600",
     color: palette.textSecondary,
     marginBottom: layout.space.xs,
   },
@@ -292,8 +355,8 @@ const styles = StyleSheet.create({
     marginTop: layout.space.md,
   },
   inputShell: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     backgroundColor: palette.surfaceMuted,
     borderRadius: layout.radius.md,
     borderWidth: StyleSheet.hairlineWidth,
@@ -313,7 +376,7 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 16,
     color: palette.text,
-    paddingVertical: Platform.OS === 'ios' ? 14 : 12,
+    paddingVertical: Platform.OS === "ios" ? 14 : 12,
     paddingHorizontal: 0,
   },
   inputFlex: {
@@ -324,14 +387,14 @@ const styles = StyleSheet.create({
     marginLeft: layout.space.xs,
   },
   errorBox: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
+    flexDirection: "row",
+    alignItems: "flex-start",
     backgroundColor: palette.dangerSoft,
     borderRadius: layout.radius.md,
     padding: layout.space.md,
     marginTop: layout.space.lg,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(220, 38, 38, 0.12)',
+    borderColor: "rgba(220, 38, 38, 0.12)",
   },
   errorIcon: {
     marginTop: 2,
@@ -342,7 +405,7 @@ const styles = StyleSheet.create({
     color: palette.danger,
     fontSize: 14,
     lineHeight: 20,
-    fontWeight: '500',
+    fontWeight: "500",
   },
   submit: {
     marginTop: layout.space.xl,
@@ -356,9 +419,9 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
   trustRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
     marginTop: layout.space.xl,
   },
   trustText: {
@@ -369,9 +432,9 @@ const styles = StyleSheet.create({
     marginLeft: layout.space.sm,
   },
   browseLibraries: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
     marginTop: layout.space.lg,
     paddingVertical: layout.space.md,
     paddingHorizontal: layout.space.md,
@@ -391,7 +454,7 @@ const styles = StyleSheet.create({
     flex: 1,
     marginRight: layout.space.sm,
     fontSize: 15,
-    fontWeight: '600',
+    fontWeight: "600",
     color: palette.primary,
     letterSpacing: -0.2,
   },

@@ -6,6 +6,7 @@ import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { BottomTabBar } from '@react-navigation/bottom-tabs';
 import { Redirect, Tabs } from 'expo-router';
 import { ActivityIndicator, Platform, StyleSheet, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 function TabBarIcon(props) {
   return <FontAwesome size={22} style={{ marginBottom: -2 }} {...props} />;
@@ -13,6 +14,7 @@ function TabBarIcon(props) {
 
 export default function TabLayout() {
   const { token, ready } = useAuth();
+  const insets = useSafeAreaInsets();
 
   if (!ready) {
     return (
@@ -48,7 +50,13 @@ export default function TabLayout() {
           tabBarInactiveTintColor: palette.tabInactive,
           tabBarActiveBackgroundColor: palette.primarySoft,
           tabBarLabelStyle: styles.tabLabel,
-          tabBarStyle: styles.tabBar,
+          tabBarStyle: [
+            styles.tabBar,
+            {
+              height: 58 + Math.max(insets.bottom, Platform.OS === 'ios' ? 28 : 12),
+              paddingBottom: Math.max(insets.bottom, Platform.OS === 'ios' ? 28 : 12),
+            },
+          ],
           tabBarItemStyle: styles.tabItem,
           headerShown: true,
           ...headerCommon,
@@ -125,9 +133,7 @@ const styles = StyleSheet.create({
     backgroundColor: palette.surface,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: palette.border,
-    height: Platform.OS === 'ios' ? 88 : 64,
     paddingTop: 6,
-    paddingBottom: Platform.OS === 'ios' ? 28 : 10,
   },
   tabBarWrap: {
     backgroundColor: palette.surface,
