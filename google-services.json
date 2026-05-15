@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "120638727691",
+    "project_id": "kypsapp-library",
+    "storage_bucket": "kypsapp-library.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:120638727691:android:d94f87094000c4d520c90e",
+        "android_client_info": {
+          "package_name": "com.kypsapp.library"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAjV9UCH4KL1885BAaZZx1ffvfe65Cf3CE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

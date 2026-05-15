@@ -1,12 +1,14 @@
-const tintColorLight = '#2f95dc';
+import { palette } from '@/constants/Theme';
+
+const tintColorLight = palette.primary;
 const tintColorDark = '#fff';
 
 export default {
   light: {
-    text: '#000',
-    background: '#fff',
+    text: palette.text,
+    background: palette.canvas,
     tint: tintColorLight,
-    tabIconDefault: '#ccc',
+    tabIconDefault: palette.tabInactive,
     tabIconSelected: tintColorLight,
   },
   dark: {

@@ -1,0 +1,9 @@
+
+> library-student-mobile@1.0.0 start
+> expo start --offline --port 8082
+
+Networking has been disabled
+Starting project at D:\my-projects\erp\library-system\mobile-app
+Starting Metro Bundler
+Waiting on http://localhost:8082
+Logs for your project will appear below.

@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "mobile-app",
-    "slug": "mobile-app",
+    "name": "KYPS Library",
+    "slug": "library-student",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -11,15 +11,28 @@
     "splash": {
       "image": "./assets/images/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#002B5B"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.kypsapp.library",
+      "infoPlist": {
+        "GADApplicationIdentifier": "ca-app-pub-2983364415472853~8473545096",
+        "NSUserTrackingUsageDescription": "This identifier is used to deliver ads and keep the app free."
+      }
     },
     "android": {
+      "package": "com.kypsapp.library",
+      "googleServicesFile": "./google-services.json",
+      "versionCode": 2,
+      "usesCleartextTraffic": true,
+      "permissions": [
+        "com.google.android.gms.permission.AD_ID",
+        "android.permission.POST_NOTIFICATIONS"
+      ],
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#002B5B"
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false
@@ -29,11 +42,44 @@
       "output": "static",
       "favicon": "./assets/images/favicon.png"
     },
+    "extra": {
+      "apiBaseUrl": "http://192.168.31.239:8000/api",
+      "firebaseProjectId": "kypsapp-library",
+      "showGoogleAds": true,
+      "router": {},
+      "eas": {
+        "projectId": "f898c8d4-37bf-4674-8943-fa57fae24160"
+      }
+    },
     "plugins": [
-      "expo-router"
+      "expo-router",
+      [
+        "react-native-google-mobile-ads",
+        {
+          "androidAppId": "ca-app-pub-2983364415472853~8473545096",
+          "iosAppId": "ca-app-pub-2983364415472853~8473545096"
+        }
+      ],
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/images/splash-icon.png",
+          "resizeMode": "contain",
+          "backgroundColor": "#002B5B"
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/icon.png",
+          "color": "#002B5B"
+        }
+      ],
+      "expo-secure-store"
     ],
     "experiments": {
       "typedRoutes": true
-    }
+    },
+    "owner": "gks53021"
   }
 }
