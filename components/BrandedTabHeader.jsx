@@ -35,9 +35,7 @@ export function BrandedTabHeader({ screenTitle }) {
         }
       />
       <View style={styles.screenLineContainer}>
-        <Text style={styles.libraryLine} numberOfLines={1}>
-          {libraryName}
-        </Text>
+        <Text style={styles.libraryLine}>{libraryName}</Text>
         <Text style={styles.screenLine} numberOfLines={1}>
           {screenTitle}
         </Text>
@@ -51,8 +49,8 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     flex: 1,
-    paddingVertical: 4,
-    minHeight: 44,
+    paddingVertical: 6,
+    minHeight: 58,
   },
   logo: {
     width: 40,
@@ -60,22 +58,28 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: "rgba(255,255,255,0.35)",
+    marginTop: 2,
+  },
+  screenLineContainer: {
+    flex: 1,
+    minWidth: 0,
+    marginLeft: 10,
   },
   libraryLine: {
     color: "#ffffff",
     fontSize: 17,
     fontWeight: "700",
     letterSpacing: -0.2,
-    lineHeight: 22,
-    marginLeft: 10,
+    lineHeight: 20,
     flexShrink: 1,
+    flexWrap: "wrap",
   },
   screenLine: {
     color: "rgba(226,232,240,0.95)",
     fontSize: 12,
     fontWeight: "600",
     letterSpacing: 0.2,
-    marginLeft: 8,
+    marginTop: 1,
     flexShrink: 0,
   },
 });

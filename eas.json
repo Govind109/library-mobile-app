@@ -41,6 +41,16 @@
         "EXPO_PUBLIC_SHOW_GOOGLE_ADS": "true"
       }
     },
+    "demo": {
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_BASE_URL": "https://lib.kypsapp.in/api",
+        "EXPO_PUBLIC_SHOW_GOOGLE_ADS": "no"
+      }
+    },
     "production": {
       "android": {
         "buildType": "app-bundle"

@@ -7,6 +7,7 @@ import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Modal,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -16,6 +17,7 @@ import {
 } from 'react-native';
 
 const WEEKDAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 function getMonthMeta(month) {
   const [y, m] = month.split('-').map(Number);
@@ -56,6 +58,8 @@ export default function AttendanceScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [selectedDate, setSelectedDate] = useState(null);
+  const [monthPickerOpen, setMonthPickerOpen] = useState(false);
+  const [pickerYear, setPickerYear] = useState(() => Number(ymNow().slice(0, 4)));
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -134,6 +138,17 @@ export default function AttendanceScreen() {
 
   const progressRotation = Math.max(0, Math.min(360, Math.round((summary.percentage / 100) * 360)));
 
+  function openMonthPicker() {
+    const year = Number(month.slice(0, 4));
+    setPickerYear(Number.isFinite(year) ? year : new Date().getFullYear());
+    setMonthPickerOpen(true);
+  }
+
+  function selectPickerMonth(monthIndex) {
+    setMonth(`${pickerYear}-${`${monthIndex + 1}`.padStart(2, '0')}`);
+    setMonthPickerOpen(false);
+  }
+
   return (
     <ScreenWithBanner>
       <ScrollView
@@ -150,10 +165,26 @@ export default function AttendanceScreen() {
         <View style={styles.topRow}>
           <Pressable
             accessibilityRole="button"
+            accessibilityLabel="Previous month"
             onPress={() => setMonth((m) => shiftMonth(m, -1))}
+            style={({ pressed }) => [styles.monthArrowBtn, pressed && styles.monthBtnPressed]}>
+            <FontAwesome name="chevron-left" size={14} color={palette.textSecondary} />
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Choose attendance month"
+            onPress={openMonthPicker}
             style={({ pressed }) => [styles.monthDropdown, pressed && styles.monthBtnPressed]}>
-            <Text style={styles.monthDropdownText}>{toShortMonthTitle(month)}</Text>
+            <FontAwesome name="calendar" size={14} color={palette.primary} />
+            <Text style={styles.monthDropdownText}>{toMonthTitle(month)}</Text>
             <FontAwesome name="chevron-down" size={12} color={palette.textSecondary} />
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Next month"
+            onPress={() => setMonth((m) => shiftMonth(m, 1))}
+            style={({ pressed }) => [styles.monthArrowBtn, pressed && styles.monthBtnPressed]}>
+            <FontAwesome name="chevron-right" size={14} color={palette.textSecondary} />
           </Pressable>
         </View>
 
@@ -230,6 +261,65 @@ export default function AttendanceScreen() {
 
         {!loading && rows.length === 0 ? <Text style={styles.empty}>No attendance for this month.</Text> : null}
       </ScrollView>
+      <Modal
+        animationType="fade"
+        transparent
+        visible={monthPickerOpen}
+        onRequestClose={() => setMonthPickerOpen(false)}>
+        <Pressable style={styles.modalBackdrop} onPress={() => setMonthPickerOpen(false)}>
+          <Pressable style={styles.monthPickerCard} onPress={(event) => event.stopPropagation()}>
+            <View style={styles.monthPickerHead}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Previous year"
+                onPress={() => setPickerYear((year) => year - 1)}
+                style={({ pressed }) => [styles.yearBtn, pressed && styles.monthBtnPressed]}>
+                <FontAwesome name="chevron-left" size={14} color={palette.text} />
+              </Pressable>
+              <Text style={styles.monthPickerTitle}>{pickerYear}</Text>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Next year"
+                onPress={() => setPickerYear((year) => year + 1)}
+                style={({ pressed }) => [styles.yearBtn, pressed && styles.monthBtnPressed]}>
+                <FontAwesome name="chevron-right" size={14} color={palette.text} />
+              </Pressable>
+            </View>
+            <View style={styles.monthGrid}>
+              {MONTH_NAMES.map((label, index) => {
+                const value = `${pickerYear}-${`${index + 1}`.padStart(2, '0')}`;
+                const active = value === month;
+                return (
+                  <Pressable
+                    key={value}
+                    accessibilityRole="button"
+                    onPress={() => selectPickerMonth(index)}
+                    style={({ pressed }) => [styles.monthOption, active && styles.monthOptionActive, pressed && styles.monthBtnPressed]}>
+                    <Text style={[styles.monthOptionText, active && styles.monthOptionTextActive]}>{label}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+            <View style={styles.monthPickerActions}>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => {
+                  setMonth(ymNow());
+                  setMonthPickerOpen(false);
+                }}
+                style={({ pressed }) => [styles.todayBtn, pressed && styles.monthBtnPressed]}>
+                <Text style={styles.todayBtnText}>Current month</Text>
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => setMonthPickerOpen(false)}
+                style={({ pressed }) => [styles.closeBtn, pressed && styles.monthBtnPressed]}>
+                <Text style={styles.closeBtnText}>Close</Text>
+              </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </ScreenWithBanner>
   );
 }
@@ -246,8 +336,20 @@ const styles = StyleSheet.create({
   },
   topRow: {
     flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'flex-start',
+    gap: 8,
     marginBottom: layout.space.md,
+  },
+  monthArrowBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: palette.surface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: palette.border,
   },
   monthDropdown: {
     flexDirection: 'row',
@@ -267,6 +369,103 @@ const styles = StyleSheet.create({
   },
   monthBtnPressed: {
     opacity: 0.7,
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.42)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: layout.space.lg,
+  },
+  monthPickerCard: {
+    width: '100%',
+    maxWidth: 360,
+    borderRadius: 18,
+    backgroundColor: palette.surface,
+    padding: layout.space.lg,
+    shadowColor: '#0f172a',
+    shadowOpacity: 0.18,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 12 },
+    elevation: 8,
+  },
+  monthPickerHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: layout.space.md,
+  },
+  monthPickerTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: palette.text,
+  },
+  yearBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: palette.canvas,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: palette.border,
+  },
+  monthGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  monthOption: {
+    width: '30.8%',
+    minHeight: 44,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: palette.canvas,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: palette.border,
+  },
+  monthOptionActive: {
+    backgroundColor: palette.primary,
+    borderColor: palette.primary,
+  },
+  monthOptionText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: palette.text,
+  },
+  monthOptionTextActive: {
+    color: palette.onPrimary,
+  },
+  monthPickerActions: {
+    marginTop: layout.space.lg,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  todayBtn: {
+    flex: 1,
+    minHeight: 42,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#eff6ff',
+  },
+  todayBtnText: {
+    fontWeight: '700',
+    color: palette.primary,
+  },
+  closeBtn: {
+    minHeight: 42,
+    borderRadius: 12,
+    paddingHorizontal: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: palette.canvas,
+  },
+  closeBtnText: {
+    fontWeight: '700',
+    color: palette.textSecondary,
   },
   overallCard: {
     padding: layout.space.lg,

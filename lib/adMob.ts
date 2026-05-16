@@ -3,9 +3,9 @@ import { Platform } from 'react-native';
 
 /** Ad unit IDs (production). */
 export const AD_UNITS = {
-  banner: 'ca-app-pub-2983364415472853/8702662303',
-  interstitial: 'ca-app-pub-2983364415472853/2339381582',
-  appOpen: 'ca-app-pub-2983364415472853/8187656987',
+  banner: 'ca-app-pub-2983364415472853/5407871398',
+  interstitial: 'ca-app-pub-2983364415472853/4098888060',
+  appOpen: 'ca-app-pub-2983364415472853/8963973023',
 } as const;
 
 const TEST_AD_UNITS = {
@@ -45,6 +45,15 @@ export function canShowGoogleAds(): boolean {
   return userAllowsGoogleAds();
 }
 
+export function getGoogleAdsDisabledReason(): string | null {
+  if (Platform.OS === 'web') return 'Google Mobile Ads is a native SDK and does not run on web.';
+  if (Constants.executionEnvironment === ExecutionEnvironment.StoreClient) {
+    return 'Google Mobile Ads does not run in Expo Go. Use npm run android:ads or a development build.';
+  }
+  if (!userAllowsGoogleAds()) return 'Google ads are disabled by EXPO_PUBLIC_SHOW_GOOGLE_ADS or expo.extra.showGoogleAds.';
+  return null;
+}
+
 type GoogleAdsModule = typeof import('react-native-google-mobile-ads');
 
 let googleAdsModulePromise: Promise<GoogleAdsModule | null> | null = null;
@@ -72,7 +81,7 @@ export function ensureAdMobInitialized(): Promise<void> {
   return initPromise;
 }
 
-class InterstitialPunchController {
+class InterstitialScreenController {
   private ad: ReturnType<GoogleAdsModule['InterstitialAd']['createForAdRequest']>;
   private adEventType: GoogleAdsModule['AdEventType'];
   private pendingShow = false;
@@ -134,8 +143,8 @@ class InterstitialPunchController {
     this.bootstrap();
   }
 
-  /** Full-screen ad after check-in / check-out; optional callback runs after ad is dismissed or if no ad. */
-  showWithOptionalFollowUp(onAfterClose?: () => void) {
+  /** Full-screen interstitial; optional callback runs after close or if no ad is available. */
+  show(onAfterClose?: () => void) {
     if (onAfterClose) this.pendingAfterShow.push(onAfterClose);
 
     this.bootstrap();
@@ -149,21 +158,33 @@ class InterstitialPunchController {
   }
 }
 
-let interstitialController: InterstitialPunchController | null = null;
+let interstitialController: InterstitialScreenController | null = null;
 
-export function preloadPunchInterstitial(): void {
+export function preloadScreenInterstitial(): void {
   if (!canShowGoogleAds()) return;
   void ensureAdMobInitialized().then(async () => {
     const mod = await getGoogleAdsModule();
     if (!mod) return;
     if (!interstitialController) {
-      interstitialController = new InterstitialPunchController(mod);
+      interstitialController = new InterstitialScreenController(mod);
     }
     interstitialController.warmup();
   });
 }
 
-export function showPunchInterstitial(onAfterClose?: () => void): void {
+export function showInterstitialAfterScreenSwitches(): void {
+  if (!canShowGoogleAds()) return;
+  void ensureAdMobInitialized().then(async () => {
+    const mod = await getGoogleAdsModule();
+    if (!mod) return;
+    if (!interstitialController) {
+      interstitialController = new InterstitialScreenController(mod);
+    }
+    interstitialController.show();
+  });
+}
+
+export function showLibraryDetailsInterstitial(onAfterClose?: () => void): void {
   if (!canShowGoogleAds()) {
     onAfterClose?.();
     return;
@@ -175,16 +196,17 @@ export function showPunchInterstitial(onAfterClose?: () => void): void {
       return;
     }
     if (!interstitialController) {
-      interstitialController = new InterstitialPunchController(mod);
+      interstitialController = new InterstitialScreenController(mod);
     }
-    interstitialController.showWithOptionalFollowUp(onAfterClose);
+    interstitialController.show(onAfterClose);
   });
 }
 
-class AppOpenNavController {
+class AppOpenPunchController {
   private ad: ReturnType<GoogleAdsModule['AppOpenAd']['createForAdRequest']>;
   private adEventType: GoogleAdsModule['AdEventType'];
   private pendingShow = false;
+  private pendingAfterShow: (() => void)[] = [];
   private bootstrapped = false;
 
   constructor(mod: GoogleAdsModule) {
@@ -199,26 +221,47 @@ class AppOpenNavController {
     this.ad.addAdEventListener(this.adEventType.LOADED, () => {
       if (this.pendingShow && this.ad.loaded) {
         this.pendingShow = false;
-        void this.ad.show().catch(() => {});
+        void this.ad.show().catch(() => this.flushPendingOnFail());
       }
     });
 
     this.ad.addAdEventListener(this.adEventType.CLOSED, () => {
+      const cbs = this.pendingAfterShow.splice(0);
+      for (const fn of cbs) {
+        try {
+          fn();
+        } catch {
+          /* ignore */
+        }
+      }
       this.ad.load();
     });
 
     this.ad.addAdEventListener(this.adEventType.ERROR, () => {
       this.pendingShow = false;
+      this.flushPendingOnFail();
       setTimeout(() => this.ad.load(), 2500);
     });
 
     this.ad.load();
   }
 
-  tryShow() {
+  private flushPendingOnFail() {
+    const cbs = this.pendingAfterShow.splice(0);
+    for (const fn of cbs) {
+      try {
+        fn();
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+
+  tryShow(onAfterClose?: () => void) {
+    if (onAfterClose) this.pendingAfterShow.push(onAfterClose);
     this.bootstrap();
     if (this.ad.loaded) {
-      void this.ad.show().catch(() => {});
+      void this.ad.show().catch(() => this.flushPendingOnFail());
       return;
     }
     this.pendingShow = true;
@@ -230,29 +273,39 @@ class AppOpenNavController {
   }
 }
 
-let appOpenNav: AppOpenNavController | null = null;
+let appOpenPunch: AppOpenPunchController | null = null;
 
-export function preloadAppOpen(): void {
+export function preloadPunchAppOpen(): void {
   if (!canShowGoogleAds()) return;
   void ensureAdMobInitialized().then(async () => {
     const mod = await getGoogleAdsModule();
     if (!mod) return;
-    if (!appOpenNav) {
-      appOpenNav = new AppOpenNavController(mod);
+    if (!appOpenPunch) {
+      appOpenPunch = new AppOpenPunchController(mod);
     }
-    appOpenNav.warmup();
+    appOpenPunch.warmup();
   });
 }
 
-/** Every 3rd screen navigation (after the first route is set). */
-export function showAppOpenAfterScreenSwitches(): void {
-  if (!canShowGoogleAds()) return;
+export function showAppOpenAd(onAfterClose?: () => void): void {
+  if (!canShowGoogleAds()) {
+    onAfterClose?.();
+    return;
+  }
   void ensureAdMobInitialized().then(async () => {
     const mod = await getGoogleAdsModule();
-    if (!mod) return;
-    if (!appOpenNav) {
-      appOpenNav = new AppOpenNavController(mod);
+    if (!mod) {
+      onAfterClose?.();
+      return;
     }
-    appOpenNav.tryShow();
+    if (!appOpenPunch) {
+      appOpenPunch = new AppOpenPunchController(mod);
+    }
+    appOpenPunch.tryShow(onAfterClose);
   });
+}
+
+/** App-open ad after check-in / check-out; callback runs after dismissal or if no ad is available. */
+export function showPunchAppOpen(onAfterClose?: () => void): void {
+  showAppOpenAd(onAfterClose);
 }

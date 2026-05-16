@@ -1,7 +1,9 @@
+import { AdsBannerRow } from '@/components/AdsBannerRow';
 import { ScreenWithBanner } from '@/components/ScreenWithBanner';
 import { layout, palette, shadow } from '@/constants/Theme';
 import { useAuth } from '@/context/AuthContext';
 import { publicLibraryDirectory, studentLibraryDirectory } from '@/lib/api/studentApi';
+import { showLibraryDetailsInterstitial } from '@/lib/adMob';
 import { getApiBaseUrl } from '@/lib/config';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { Image } from 'expo-image';
@@ -83,6 +85,12 @@ function rowSearchText(row) {
     row.listing_address,
     row.address,
   ].filter(Boolean).join(' ').toLowerCase();
+}
+
+function shouldShowInlineAd(index, total, seed) {
+  if (total < 3 || index >= total - 1) return false;
+  const offset = Math.abs(String(seed || 'libraries').split('').reduce((sum, ch) => sum + ch.charCodeAt(0), 0)) % 3;
+  return (index + offset) % 4 === 2;
 }
 
 export function LibraryDirectoryScreen({ publicMode = false }) {
@@ -201,10 +209,15 @@ export function LibraryDirectoryScreen({ publicMode = false }) {
   }
 
   function openDetails(row) {
-    router.push({
+    const goDetails = () => router.push({
       pathname: '/library-detail',
       params: { library: encodeURIComponent(JSON.stringify(row)) },
     });
+    if (!token) {
+      showLibraryDetailsInterstitial(goDetails);
+      return;
+    }
+    goDetails();
   }
 
   async function loadMore(all = false) {
@@ -289,66 +302,70 @@ export function LibraryDirectoryScreen({ publicMode = false }) {
         </View>
       ) : (
         <>
-        {displayRows.map((row) => {
+        {displayRows.map((row, index) => {
           const logoUri = resolveMediaUrl(row.logo_url);
           const dist = distanceLabel(row.distance_km);
           return (
-          <View key={row.id} style={styles.card}>
-            <Pressable style={styles.cardTop} onPress={() => openDetails(row)}>
-              {logoUri ? (
-                <Image source={{ uri: logoUri }} style={styles.cardLogoImg} contentFit="cover" transition={120} />
-              ) : (
-              <View style={styles.logo}>
-                <FontAwesome name="university" size={20} color={palette.primary} />
-              </View>
-              )}
-              <View style={styles.cardMain}>
-                <Text style={styles.cardTitle}>{row.name}</Text>
-                <Text style={styles.cardMeta} numberOfLines={2}>
-                  {[row.listing_area, row.city, row.pincode].filter(Boolean).join(' - ') || row.address || 'Address not set'}
-                </Text>
-              </View>
-              {dist ? <Text style={styles.distanceBadge}>{dist}</Text> : null}
-            </Pressable>
-            {row.listing_description ? <Text style={styles.desc} numberOfLines={3}>{row.listing_description}</Text> : null}
-            <View style={styles.metaRow}>
-              {feeLine(row.monthly_fee_min) ? <Text style={styles.pillPrimary}>{feeLine(row.monthly_fee_min)}</Text> : null}
-              {row.seat_capacity ? <Text style={styles.pill}>{row.seat_capacity} seats</Text> : null}
-              
-            </View>
-            {Array.isArray(row.amenities) && row.amenities.length ? (
-              <View style={styles.metaRow}>
-                {row.amenities.slice(0, 4).map((id) => (
-                  <Text key={id} style={styles.softPill}>{AMENITY_LABELS[id] || id}</Text>
-                ))}
-              </View>
-            ) : null}
-            <Text style={styles.address} numberOfLines={2}>{row.address}</Text>
-            {row.public_email ? (
-              <Pressable style={styles.emailRow} onPress={() => Linking.openURL(`mailto:${row.public_email}`)}>
-                <FontAwesome name="envelope" size={14} color={palette.primary} style={styles.emailIcon} />
-                <Text style={styles.emailText} numberOfLines={1}>{row.public_email}</Text>
-              </Pressable>
-            ) : null}
-            <View style={styles.actions}>
-              <Pressable style={styles.actionBtnPrimary} onPress={() => openDetails(row)}>
-                <FontAwesome name="info-circle" size={14} color="#fff" />
-                <Text style={styles.actionTextPrimary}>View details</Text>
-              </Pressable>
-              {row.contact_phone ? (
-                <Pressable style={styles.actionBtn} onPress={() => Linking.openURL(`tel:${row.contact_phone}`)}>
-                  <FontAwesome name="phone" size={14} color={palette.primary} />
-                  <Text style={styles.actionText}>Call</Text>
+            <View key={row.id}>
+              <View style={styles.card}>
+                <Pressable style={styles.cardTop} onPress={() => openDetails(row)}>
+                  {logoUri ? (
+                    <Image source={{ uri: logoUri }} style={styles.cardLogoImg} contentFit="cover" transition={120} />
+                  ) : (
+                    <View style={styles.logo}>
+                      <FontAwesome name="university" size={20} color={palette.primary} />
+                    </View>
+                  )}
+                  <View style={styles.cardMain}>
+                    <Text style={styles.cardTitle}>{row.name}</Text>
+                    <Text style={styles.cardMeta} numberOfLines={2}>
+                      {[row.listing_area, row.city, row.pincode].filter(Boolean).join(' - ') || row.address || 'Address not set'}
+                    </Text>
+                  </View>
+                  {dist ? <Text style={styles.distanceBadge}>{dist}</Text> : null}
                 </Pressable>
-              ) : null}
-              {row.contact_whatsapp ? (
-                <Pressable style={styles.actionBtn} onPress={() => Linking.openURL(`https://wa.me/${String(row.contact_whatsapp).replace(/\D/g, '')}`)}>
-                  <FontAwesome name="whatsapp" size={14} color={palette.primary} />
-                  <Text style={styles.actionText}>WhatsApp</Text>
-                </Pressable>
+                {row.listing_description ? <Text style={styles.desc} numberOfLines={3}>{row.listing_description}</Text> : null}
+                <View style={styles.metaRow}>
+                  {feeLine(row.monthly_fee_min) ? <Text style={styles.pillPrimary}>{feeLine(row.monthly_fee_min)}</Text> : null}
+                  {row.seat_capacity ? <Text style={styles.pill}>{row.seat_capacity} seats</Text> : null}
+                </View>
+                {Array.isArray(row.amenities) && row.amenities.length ? (
+                  <View style={styles.metaRow}>
+                    {row.amenities.slice(0, 4).map((id) => (
+                      <Text key={id} style={styles.softPill}>{AMENITY_LABELS[id] || id}</Text>
+                    ))}
+                  </View>
+                ) : null}
+                <Text style={styles.address} numberOfLines={2}>{row.address}</Text>
+                {row.public_email ? (
+                  <Pressable style={styles.emailRow} onPress={() => Linking.openURL(`mailto:${row.public_email}`)}>
+                    <FontAwesome name="envelope" size={14} color={palette.primary} style={styles.emailIcon} />
+                    <Text style={styles.emailText} numberOfLines={1}>{row.public_email}</Text>
+                  </Pressable>
+                ) : null}
+                <View style={styles.actions}>
+                  <Pressable style={styles.actionBtnPrimary} onPress={() => openDetails(row)}>
+                    <FontAwesome name="info-circle" size={14} color="#fff" />
+                    <Text style={styles.actionTextPrimary}>View details</Text>
+                  </Pressable>
+                  {row.contact_phone ? (
+                    <Pressable style={styles.actionBtn} onPress={() => Linking.openURL(`tel:${row.contact_phone}`)}>
+                      <FontAwesome name="phone" size={14} color={palette.primary} />
+                      <Text style={styles.actionText}>Call</Text>
+                    </Pressable>
+                  ) : null}
+                  {row.contact_whatsapp ? (
+                    <Pressable style={styles.actionBtn} onPress={() => Linking.openURL(`https://wa.me/${String(row.contact_whatsapp).replace(/\D/g, '')}`)}>
+                      <FontAwesome name="whatsapp" size={14} color={palette.primary} />
+                      <Text style={styles.actionText}>WhatsApp</Text>
+                    </Pressable>
+                  ) : null}
+                </View>
+              </View>
+              {shouldShowInlineAd(index, displayRows.length, activeQuery || searchText) ? (
+                <AdsBannerRow placement="inline" />
               ) : null}
             </View>
-          </View>
           );
         })}
         {canLoadMore ? (

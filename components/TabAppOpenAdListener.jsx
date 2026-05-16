@@ -1,9 +1,9 @@
-import { canShowGoogleAds, ensureAdMobInitialized, showAppOpenAfterScreenSwitches } from '@/lib/adMob';
+import { canShowGoogleAds, ensureAdMobInitialized, showInterstitialAfterScreenSwitches } from '@/lib/adMob';
 import { usePathname } from 'expo-router';
 import { useEffect, useRef } from 'react';
 
 /**
- * Shows an App Open full-screen ad every 3rd tab/screen change.
+ * Shows an interstitial full-screen ad every 3rd tab/screen change.
  * The first path mount is ignored (it's the initial render, not a navigation).
  * Counter: change #1 → no ad, #2 → no ad, #3 → show ad, #4 → no ad … repeat.
  */
@@ -27,7 +27,7 @@ export function TabAppOpenAdListener() {
     if (switchCount.current % 3 !== 0) return;
 
     void ensureAdMobInitialized().then(() => {
-      showAppOpenAfterScreenSwitches();
+      showInterstitialAfterScreenSwitches();
     });
   // pathname change drives this effect
   // eslint-disable-next-line react-hooks/exhaustive-deps

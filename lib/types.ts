@@ -98,9 +98,14 @@ export interface StartupAlert {
 
 export interface AttendanceRow {
   date: string | null;
+  seat_time_slot_id?: number | null;
+  slot_start?: string | null;
+  slot_end?: string | null;
+  slot_label?: string | null;
   status: string;
   punch_in_at: string | null;
   punch_out_at: string | null;
+  punch_in_channel?: 'button' | 'qr' | null;
   worked_minutes: number | null;
 }
 

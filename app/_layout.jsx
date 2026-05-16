@@ -1,6 +1,7 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { AdMobBootstrap } from '@/components/AdMobBootstrap';
+import { DailyDueAlert } from '@/components/DailyDueAlert';
 import { AuthProvider } from '@/context/AuthContext';
 import { palette } from '@/constants/Theme';
 import { useFonts } from 'expo-font';
@@ -104,6 +105,7 @@ function RootLayoutNav() {
     <ThemeProvider value={navigationTheme}>
       <AuthProvider>
         <AdMobBootstrap />
+        <DailyDueAlert />
         <Stack>
           <Stack.Screen name="index" options={{ headerShown: false }} />
           <Stack.Screen name="login" options={{ headerShown: false }} />

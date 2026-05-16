@@ -9,7 +9,7 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/images/splash-icon.png",
+      "image": "./assets/images/icon.png",
       "resizeMode": "contain",
       "backgroundColor": "#002B5B"
     },
@@ -17,7 +17,7 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.kypsapp.library",
       "infoPlist": {
-        "GADApplicationIdentifier": "ca-app-pub-2983364415472853~8473545096",
+        "GADApplicationIdentifier": "ca-app-pub-2983364415472853~6916623097",
         "NSUserTrackingUsageDescription": "This identifier is used to deliver ads and keep the app free."
       }
     },
@@ -48,7 +48,7 @@
       "showGoogleAds": true,
       "router": {},
       "eas": {
-        "projectId": "f898c8d4-37bf-4674-8943-fa57fae24160"
+        "projectId": "f40c8647-1e28-4287-8f09-c6e651d2b79f"
       }
     },
     "plugins": [
@@ -56,14 +56,15 @@
       [
         "react-native-google-mobile-ads",
         {
-          "androidAppId": "ca-app-pub-2983364415472853~8473545096",
-          "iosAppId": "ca-app-pub-2983364415472853~8473545096"
+          "androidAppId": "ca-app-pub-2983364415472853~6916623097",
+          "iosAppId": "ca-app-pub-2983364415472853~6916623097"
         }
       ],
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/splash-icon.png",
+          "image": "./assets/images/icon.png",
+          "imageWidth": 240,
           "resizeMode": "contain",
           "backgroundColor": "#002B5B"
         }
@@ -80,6 +81,6 @@
     "experiments": {
       "typedRoutes": true
     },
-    "owner": "gks53021"
+    "owner": "govind.itarhi"
   }
 }

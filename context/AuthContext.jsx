@@ -64,17 +64,26 @@ export function AuthProvider({ children }) {
     };
   }, [hydrate]);
 
+  const refreshMe = useCallback(async () => {
+    if (!token) return;
+    const me = await studentMe(token);
+    setStudent(me.student);
+    setLibrary(me.library);
+    setAlerts(me.alerts ?? []);
+  }, [token]);
+
   useEffect(() => {
     if (!token) return;
     const subscription = AppState.addEventListener('change', (state) => {
       if (state === 'active') {
         void registerStudentPushToken(token);
+        void refreshMe();
       }
     });
     return () => {
       subscription.remove();
     };
-  }, [token]);
+  }, [token, refreshMe]);
 
   const login = useCallback(async (loginId, password) => {
     // Grab the device push token before the login request so the backend
@@ -110,14 +119,6 @@ export function AuthProvider({ children }) {
     setStudent(null);
     setLibrary(null);
     setAlerts([]);
-  }, [token]);
-
-  const refreshMe = useCallback(async () => {
-    if (!token) return;
-    const me = await studentMe(token);
-    setStudent(me.student);
-    setLibrary(me.library);
-    setAlerts(me.alerts ?? []);
   }, [token]);
 
   const value = useMemo(

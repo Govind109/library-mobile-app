@@ -1,9 +1,12 @@
 import { BrandedTabHeader } from '@/components/BrandedTabHeader';
 import { palette } from '@/constants/Theme';
-import { Stack } from 'expo-router';
-import { StyleSheet } from 'react-native';
+import FontAwesome from '@expo/vector-icons/FontAwesome';
+import { Stack, useRouter } from 'expo-router';
+import { Pressable, StyleSheet } from 'react-native';
 
 export default function ProfileStackLayout() {
+  const router = useRouter();
+
   return (
     <Stack
       screenOptions={{
@@ -12,6 +15,16 @@ export default function ProfileStackLayout() {
         headerShadowVisible: false,
         headerTintColor: palette.onPrimary,
         headerBackTitle: '',
+        headerRight: () => (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Find libraries"
+            onPress={() => router.push('/libraries')}
+            style={({ pressed }) => [styles.headerAction, pressed && styles.headerActionPressed]}>
+            <FontAwesome name="search" size={18} color={palette.onPrimary} />
+          </Pressable>
+        ),
+        headerRightContainerStyle: styles.headerRightContainer,
         contentStyle: { backgroundColor: palette.canvas },
       }}>
       <Stack.Screen
@@ -47,6 +60,23 @@ const styles = StyleSheet.create({
     backgroundColor: palette.headerBg,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: 'rgba(255,255,255,0.12)',
+    minHeight: 72,
+  },
+  headerRightContainer: {
+    paddingRight: 14,
+  },
+  headerAction: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.14)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.24)',
+  },
+  headerActionPressed: {
+    opacity: 0.75,
   },
   headerTitle: {
     fontSize: 17,

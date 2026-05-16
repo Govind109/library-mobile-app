@@ -1,4 +1,4 @@
-import { canShowGoogleAds, ensureAdMobInitialized, getAdUnitId } from '@/lib/adMob';
+import { canShowGoogleAds, ensureAdMobInitialized, getAdUnitId, getGoogleAdsDisabledReason } from '@/lib/adMob';
 import { palette } from '@/constants/Theme';
 import { useEffect, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
@@ -8,15 +8,21 @@ import { StyleSheet, View } from 'react-native';
  * Hidden (zero height) until the ad loads successfully — no blank gap on failure.
  * No-op in Expo Go or web.
  */
-export function AdsBannerRow() {
+export function AdsBannerRow({ placement = 'top', style }) {
   const [initialized, setInitialized] = useState(false);
   const [adVisible, setAdVisible] = useState(false);
 
   useEffect(() => {
-    if (!canShowGoogleAds()) return;
+    if (!canShowGoogleAds()) {
+      const disabledReason = getGoogleAdsDisabledReason();
+      if (__DEV__ && disabledReason) console.info(`[AdMob Banner] ${disabledReason}`);
+      return;
+    }
     ensureAdMobInitialized()
       .then(() => setInitialized(true))
-      .catch(() => {});
+      .catch((error) => {
+        if (__DEV__) console.warn('[AdMob Banner] Initialization failed', error);
+      });
   }, []);
 
   if (!canShowGoogleAds() || !initialized) return null;
@@ -30,16 +36,19 @@ export function AdsBannerRow() {
 
   return (
     <View
-      style={[styles.wrap, !adVisible && styles.collapsed]}
+      style={[styles.wrap, placement === 'inline' && styles.inline, !adVisible && styles.collapsed, style]}
       collapsable={false}
       pointerEvents={adVisible ? 'box-none' : 'none'}
     >
       <BannerAd
         unitId={getAdUnitId('banner')}
-        size={BannerAdSize.ANCHORED_ADAPTIVE_BANNER}
+        size={placement === 'inline' ? BannerAdSize.INLINE_ADAPTIVE_BANNER : BannerAdSize.ANCHORED_ADAPTIVE_BANNER}
         requestOptions={{ requestNonPersonalizedAdsOnly: true }}
         onAdLoaded={() => setAdVisible(true)}
-        onAdFailedToLoad={() => setAdVisible(false)}
+        onAdFailedToLoad={(error) => {
+          if (__DEV__) console.warn('[AdMob Banner] Failed to load', error);
+          setAdVisible(false);
+        }}
       />
     </View>
   );
@@ -52,6 +61,10 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: palette.borderSubtle,
     overflow: 'hidden',
+  },
+  inline: {
+    borderBottomWidth: 0,
+    marginBottom: 12,
   },
   collapsed: {
     height: 0,
