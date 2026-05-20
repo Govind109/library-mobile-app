@@ -51,10 +51,19 @@ function statusTone(status) {
   return { dot: palette.textHint, txt: palette.textMuted };
 }
 
+function formatDuration(minutes) {
+  const n = Number(minutes);
+  if (!Number.isFinite(n) || n <= 0) return '0m';
+  const h = Math.floor(n / 60);
+  const m = Math.round(n % 60);
+  return [h ? `${h}h` : null, m ? `${m}m` : null].filter(Boolean).join(' ') || '0m';
+}
+
 export default function AttendanceScreen() {
   const { token } = useAuth();
   const [month, setMonth] = useState(ymNow());
   const [rows, setRows] = useState([]);
+  const [monthSummary, setMonthSummary] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [selectedDate, setSelectedDate] = useState(null);
@@ -65,6 +74,7 @@ export default function AttendanceScreen() {
     if (!token) return;
     const data = await studentAttendance(token, month);
     setRows(data.rows);
+    setMonthSummary(data.summary ?? null);
   }, [token, month]);
 
   useEffect(() => {
@@ -94,7 +104,25 @@ export default function AttendanceScreen() {
   const rowsByDate = useMemo(() => {
     const m = new Map();
     for (const row of rows) {
-      if (row.date) m.set(row.date, row);
+      if (!row.date) continue;
+      const existing = m.get(row.date);
+      if (!existing) {
+        m.set(row.date, row);
+        continue;
+      }
+      const sessions = [
+        ...(Array.isArray(existing.punch_sessions) ? existing.punch_sessions : []),
+        ...(Array.isArray(row.punch_sessions) ? row.punch_sessions : []),
+      ];
+      const punchOuts = [existing.punch_out_at, row.punch_out_at].filter(Boolean).sort();
+      m.set(row.date, {
+        ...existing,
+        slot_label: existing.slot_label === row.slot_label ? existing.slot_label : 'Multiple slots',
+        punch_in_at: [existing.punch_in_at, row.punch_in_at].filter(Boolean).sort()[0] ?? null,
+        punch_out_at: punchOuts[punchOuts.length - 1] ?? null,
+        worked_minutes: Number(existing.worked_minutes || 0) + Number(row.worked_minutes || 0),
+        punch_sessions: sessions,
+      });
     }
     return m;
   }, [rows]);
@@ -131,12 +159,15 @@ export default function AttendanceScreen() {
       else if (s.includes('absent')) absent += 1;
       else if (s.includes('leave')) leaves += 1;
     }
-    const total = rows.length;
+    const total = monthSummary?.eligible_days ?? rows.length;
+    present = monthSummary?.present_days ?? present;
+    absent = monthSummary?.missed_days ?? absent;
     const percentage = total > 0 ? Math.round((present / total) * 100) : 0;
     return { present, absent, leaves, total, percentage };
-  }, [rows]);
+  }, [rows, monthSummary]);
 
-  const progressRotation = Math.max(0, Math.min(360, Math.round((summary.percentage / 100) * 360)));
+  const selectedRow = selectedDate ? rowsByDate.get(selectedDate) ?? null : null;
+  const selectedPunches = Array.isArray(selectedRow?.punch_sessions) ? selectedRow.punch_sessions : [];
 
   function openMonthPicker() {
     const year = Number(month.slice(0, 4));
@@ -192,41 +223,18 @@ export default function AttendanceScreen() {
           <ActivityIndicator style={styles.loader} size="large" color={palette.primary} />
         ) : (
           <>
-            <View style={[cardFlat(), styles.overallCard]}>
-              <View style={styles.overallLeft}>
-                <Text style={styles.overallLabel}>Overall Attendance</Text>
-                <Text style={styles.overallPercent}>{summary.percentage}%</Text>
-                <Text style={styles.overallMeta}>
-                  Present {summary.present} of {summary.total || 0} days
-                </Text>
+            <View style={[cardFlat(), styles.summaryCard]}>
+              <View style={styles.summaryMain}>
+                <Text style={styles.summaryPercent}>{summary.percentage}%</Text>
+                <View style={styles.summaryTextCol}>
+                  <Text style={styles.summaryTitle}>Monthly Attendance</Text>
+                  <Text style={styles.summaryMeta}>Present {summary.present} of {summary.total || 0} open days</Text>
+                </View>
               </View>
-              <View style={styles.ringWrap}>
-                <View style={styles.ringBase} />
-                <View
-                  style={[
-                    styles.ringProgress,
-                    { transform: [{ rotate: `${progressRotation - 90}deg` }] },
-                  ]}
-                />
-                <View style={styles.ringInner} />
-              </View>
-            </View>
-
-            <View style={styles.statRow}>
-              <View style={[cardFlat(), styles.statCard]}>
-                <View style={[styles.statDot, { backgroundColor: '#0ea85f' }]} />
-                <Text style={styles.statTitle}>Present</Text>
-                <Text style={[styles.statValue, { color: '#0ea85f' }]}>{summary.present}</Text>
-              </View>
-              <View style={[cardFlat(), styles.statCard]}>
-                <View style={[styles.statDot, { backgroundColor: '#ef4444' }]} />
-                <Text style={styles.statTitle}>Absent</Text>
-                <Text style={[styles.statValue, { color: '#ef4444' }]}>{summary.absent}</Text>
-              </View>
-              <View style={[cardFlat(), styles.statCard]}>
-                <View style={[styles.statDot, { backgroundColor: '#f59e0b' }]} />
-                <Text style={styles.statTitle}>Leaves</Text>
-                <Text style={[styles.statValue, { color: '#f59e0b' }]}>{summary.leaves}</Text>
+              <View style={styles.summaryChips}>
+                <Text style={[styles.summaryChip, styles.summaryChipPresent]}>P {summary.present}</Text>
+                <Text style={[styles.summaryChip, styles.summaryChipAbsent]}>A {summary.absent}</Text>
+                <Text style={[styles.summaryChip, styles.summaryChipLeave]}>L {summary.leaves}</Text>
               </View>
             </View>
 
@@ -256,6 +264,37 @@ export default function AttendanceScreen() {
                 })}
               </View>
             </View>
+
+            {selectedRow ? (
+              <View style={[cardFlat(), styles.detailCard]}>
+                <View style={styles.detailHead}>
+                  <View>
+                    <Text style={styles.detailTitle}>Day punch history</Text>
+                    <Text style={styles.detailMeta}>
+                      {selectedRow.date} · {selectedRow.slot_label || 'Time slot'}
+                    </Text>
+                  </View>
+                  <Text style={[styles.detailStatus, { color: statusTone(selectedRow.status).txt }]}>
+                    {selectedRow.status || '—'}
+                  </Text>
+                </View>
+                <View style={styles.durationRow}>
+                  <Text style={styles.durationText}>Stayed: {formatDuration(selectedRow.worked_minutes)}</Text>
+                  <Text style={styles.durationSub}>First in {selectedRow.punch_in_at || '—'} · Last out {selectedRow.punch_out_at || '—'}</Text>
+                </View>
+                {selectedPunches.length ? (
+                  selectedPunches.map((punch, index) => (
+                    <View key={`${punch.punch_in_at}-${index}`} style={styles.punchRow}>
+                      <Text style={styles.punchIndex}>#{index + 1}</Text>
+                      <Text style={styles.punchText}>{punch.punch_in_at || '—'} → {punch.punch_out_at || 'Open'}</Text>
+                      <Text style={styles.punchDuration}>{formatDuration(punch.worked_minutes)}</Text>
+                    </View>
+                  ))
+                ) : (
+                  <Text style={styles.detailMeta}>No detailed punches saved for this day.</Text>
+                )}
+              </View>
+            ) : null}
           </>
         )}
 
@@ -330,7 +369,7 @@ const styles = StyleSheet.create({
     backgroundColor: palette.canvas,
   },
   content: {
-    paddingTop: layout.space.md,
+    paddingTop: layout.space.sm,
     paddingBottom: layout.space.xxl,
     paddingHorizontal: layout.space.lg,
   },
@@ -339,11 +378,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'flex-start',
     gap: 8,
-    marginBottom: layout.space.md,
+    marginBottom: layout.space.sm,
   },
   monthArrowBtn: {
-    width: 38,
-    height: 38,
+    width: 34,
+    height: 34,
     borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
@@ -355,8 +394,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
     borderRadius: 10,
     backgroundColor: palette.surface,
     borderWidth: StyleSheet.hairlineWidth,
@@ -364,11 +403,76 @@ const styles = StyleSheet.create({
   },
   monthDropdownText: {
     color: palette.text,
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '600',
   },
   monthBtnPressed: {
     opacity: 0.7,
+  },
+  detailCard: {
+    marginTop: layout.space.sm,
+    padding: layout.space.md,
+    gap: 8,
+  },
+  detailHead: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  detailTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: palette.text,
+  },
+  detailMeta: {
+    marginTop: 2,
+    fontSize: 11,
+    color: palette.textMuted,
+  },
+  detailStatus: {
+    fontSize: 13,
+    fontWeight: '800',
+    textTransform: 'capitalize',
+  },
+  durationRow: {
+    padding: 10,
+    borderRadius: 12,
+    backgroundColor: palette.canvas,
+  },
+  durationText: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: palette.text,
+  },
+  durationSub: {
+    marginTop: 3,
+    fontSize: 11,
+    color: palette.textMuted,
+  },
+  punchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 7,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: palette.border,
+  },
+  punchIndex: {
+    width: 28,
+    fontSize: 11,
+    fontWeight: '800',
+    color: palette.primary,
+  },
+  punchText: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: '700',
+    color: palette.text,
+  },
+  punchDuration: {
+    fontSize: 11,
+    color: palette.textMuted,
+    fontWeight: '700',
   },
   modalBackdrop: {
     flex: 1,
@@ -467,34 +571,53 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: palette.textSecondary,
   },
-  overallCard: {
-    padding: layout.space.lg,
+  summaryCard: {
+    padding: layout.space.md,
+    gap: 10,
+  },
+  summaryMain: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    gap: 12,
   },
-  overallLeft: {
+  summaryPercent: {
+    minWidth: 70,
+    fontSize: 30,
+    fontWeight: '800',
+    color: palette.primary,
+    letterSpacing: -0.8,
+  },
+  summaryTextCol: {
     flex: 1,
-    paddingRight: 8,
+    minWidth: 0,
   },
-  overallLabel: {
-    ...typography.caption,
-    color: palette.textSecondary,
-    marginBottom: 4,
-    fontWeight: '600',
-  },
-  overallPercent: {
-    fontSize: 40,
-    fontWeight: '700',
+  summaryTitle: {
+    fontSize: 14,
+    fontWeight: '800',
     color: palette.text,
-    lineHeight: 42,
-    letterSpacing: -0.9,
   },
-  overallMeta: {
-    marginTop: 4,
-    ...typography.caption,
+  summaryMeta: {
+    marginTop: 2,
+    fontSize: 12,
+    fontWeight: '600',
     color: palette.textSecondary,
   },
+  summaryChips: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  summaryChip: {
+    flex: 1,
+    textAlign: 'center',
+    paddingVertical: 7,
+    borderRadius: layout.radius.full,
+    fontSize: 12,
+    fontWeight: '800',
+    overflow: 'hidden',
+  },
+  summaryChipPresent: { color: '#0b8a4f', backgroundColor: '#dcfce7' },
+  summaryChipAbsent: { color: '#b91c1c', backgroundColor: '#fee2e2' },
+  summaryChipLeave: { color: '#b45309', backgroundColor: '#fef3c7' },
   ringWrap: {
     width: 84,
     height: 84,
@@ -528,13 +651,13 @@ const styles = StyleSheet.create({
     backgroundColor: palette.surface,
   },
   statRow: {
-    marginTop: layout.space.md,
+    marginTop: layout.space.sm,
     flexDirection: 'row',
-    gap: 10,
+    gap: 8,
   },
   statCard: {
     flex: 1,
-    paddingVertical: 12,
+    paddingVertical: 9,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -551,24 +674,24 @@ const styles = StyleSheet.create({
   },
   statValue: {
     marginTop: 4,
-    fontSize: 24,
+    fontSize: 20,
     fontWeight: '700',
   },
   loader: {
     marginTop: 48,
   },
   calendarCard: {
-    padding: layout.space.lg,
-    marginTop: layout.space.md,
+    padding: layout.space.md,
+    marginTop: layout.space.sm,
   },
   calendarTitle: {
     ...typography.headline,
-    marginBottom: layout.space.sm,
-    fontSize: 17,
+    marginBottom: 8,
+    fontSize: 15,
   },
   weekRow: {
     flexDirection: 'row',
-    marginBottom: 10,
+    marginBottom: 6,
   },
   weekLabel: {
     width: '14.285%',
@@ -581,16 +704,16 @@ const styles = StyleSheet.create({
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    rowGap: 8,
+    rowGap: 4,
   },
   dayEmpty: {
     width: '14.285%',
-    height: 44,
+    height: 36,
   },
   dayCell: {
     width: '14.285%',
-    height: 44,
-    borderRadius: 22,
+    height: 36,
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -601,7 +724,7 @@ const styles = StyleSheet.create({
     opacity: 0.7,
   },
   dayNum: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
     color: palette.text,
   },

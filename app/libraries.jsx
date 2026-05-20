@@ -1,6 +1,5 @@
-import { LibraryDirectoryScreen } from '@/components/LibraryDirectoryScreen';
+import { Redirect } from 'expo-router';
 
-/** Public library discovery (no login required). */
 export default function PublicLibrariesScreen() {
-  return <LibraryDirectoryScreen publicMode />;
+  return <Redirect href="/login" />;
 }

@@ -1,6 +1,5 @@
-import { LibraryDirectoryScreen } from '@/components/LibraryDirectoryScreen';
+import { Redirect } from 'expo-router';
 
-/** Authenticated discovery — includes contact details from libraries when published. */
 export default function LibrariesTabScreen() {
-  return <LibraryDirectoryScreen publicMode={false} />;
+  return <Redirect href="/(tabs)" />;
 }

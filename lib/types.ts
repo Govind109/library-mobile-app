@@ -2,9 +2,13 @@ export type StudentStatus = 'active' | 'inactive' | string;
 
 export interface TimeSlot {
   id: number;
+  seat_id?: number | null;
+  seat_number?: string | null;
+  seat_type?: string | null;
   slot_start: string;
   slot_end: string;
   label: string | null;
+  fee_amount?: number | string | null;
 }
 
 export interface Student {
@@ -37,6 +41,7 @@ export interface LibraryStatus {
   opening_time?: string | null;
   closing_time?: string | null;
   weekly_off_days?: string[];
+  is_24x7?: boolean;
 }
 
 export interface Library {
@@ -48,6 +53,7 @@ export interface Library {
   opening_time: string | null;
   closing_time: string | null;
   weekly_off_days: string[];
+  is_24x7?: boolean;
   attendance_mode?: 'button_only' | 'qr_only' | 'both' | string;
   status: LibraryStatus;
 }
@@ -109,9 +115,19 @@ export interface AttendanceRow {
   worked_minutes: number | null;
 }
 
+export interface AttendanceSummary {
+  eligible_days: number;
+  present_days: number;
+  missed_days: number;
+  percentage: number;
+}
+
 export interface MonthlyBillRow {
   id: number;
   month: string | null;
+  service_period_start?: string | null;
+  service_period_end?: string | null;
+  service_period_label?: string | null;
   amount: string | number;
   status: string;
   paid_amount: number;

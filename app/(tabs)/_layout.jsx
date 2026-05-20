@@ -4,8 +4,8 @@ import { BrandedTabHeader } from '@/components/BrandedTabHeader';
 import { palette } from '@/constants/Theme';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { BottomTabBar } from '@react-navigation/bottom-tabs';
-import { Redirect, Tabs, useRouter } from 'expo-router';
-import { ActivityIndicator, Platform, Pressable, StyleSheet, View } from 'react-native';
+import { Redirect, Tabs } from 'expo-router';
+import { ActivityIndicator, Platform, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 function TabBarIcon(props) {
@@ -15,7 +15,6 @@ function TabBarIcon(props) {
 export default function TabLayout() {
   const { token, ready } = useAuth();
   const insets = useSafeAreaInsets();
-  const router = useRouter();
 
   if (!ready) {
     return (
@@ -35,16 +34,6 @@ export default function TabLayout() {
     headerTintColor: palette.onPrimary,
     headerTitleAlign: 'left',
     headerTitleContainerStyle: styles.headerTitleContainer,
-    headerRight: () => (
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Find libraries"
-        onPress={() => router.push('/libraries')}
-        style={({ pressed }) => [styles.headerAction, pressed && styles.headerActionPressed]}>
-        <FontAwesome name="search" size={18} color={palette.onPrimary} />
-      </Pressable>
-    ),
-    headerRightContainerStyle: styles.headerRightContainer,
   };
 
   return (
@@ -104,15 +93,7 @@ export default function TabLayout() {
             tabBarIcon: ({ color }) => <TabBarIcon name="bell" color={color} />,
           }}
         />
-        <Tabs.Screen
-          name="libraries"
-          options={{
-            href: null,
-            headerTitle: () => <BrandedTabHeader screenTitle="Libraries" />,
-            title: 'Libraries',
-            tabBarIcon: ({ color }) => <TabBarIcon name="building" color={color} />,
-          }}
-        />
+        <Tabs.Screen name="libraries" options={{ href: null }} />
         <Tabs.Screen
           name="profile"
           options={{
@@ -142,22 +123,6 @@ const styles = StyleSheet.create({
   headerTitleContainer: {
     maxWidth: '78%',
     width: '78%',
-  },
-  headerRightContainer: {
-    paddingRight: 14,
-  },
-  headerAction: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.14)',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(255,255,255,0.24)',
-  },
-  headerActionPressed: {
-    opacity: 0.75,
   },
   tabBar: {
     backgroundColor: palette.surface,

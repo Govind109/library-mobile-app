@@ -112,23 +112,13 @@ function RootLayoutNav() {
           <Stack.Screen
             name="libraries"
             options={{
-              title: 'Find libraries',
-              headerShown: true,
-              headerStyle: { backgroundColor: palette.primary },
-              headerTintColor: palette.onPrimary,
-              headerTitleStyle: { fontWeight: '600', color: palette.onPrimary },
-              headerShadowVisible: false,
+              headerShown: false,
             }}
           />
           <Stack.Screen
             name="library-detail"
             options={{
-              title: 'Library details',
-              headerShown: true,
-              headerStyle: { backgroundColor: palette.primary },
-              headerTintColor: palette.onPrimary,
-              headerTitleStyle: { fontWeight: '600', color: palette.onPrimary },
-              headerShadowVisible: false,
+              headerShown: false,
             }}
           />
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />

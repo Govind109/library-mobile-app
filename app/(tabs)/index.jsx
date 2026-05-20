@@ -1,6 +1,14 @@
 import { ScreenWithBanner } from '@/components/ScreenWithBanner';
 import { useAuth } from '@/context/AuthContext';
-import { ApiError, studentAttendance, studentCheckIn, studentCheckOut, studentHolidays, studentQrPunch } from '@/lib/api/studentApi';
+import {
+  ApiError,
+  studentAllTimeFees,
+  studentAttendance,
+  studentCheckIn,
+  studentCheckOut,
+  studentHolidays,
+  studentQrPunch,
+} from '@/lib/api/studentApi';
 import { formatInr, ymNow } from '@/lib/format';
 import { cardFlat, layout, palette, shadow } from '@/constants/Theme';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
@@ -32,7 +40,6 @@ import {
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
-  Image,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -66,16 +73,6 @@ function formatTodayHeading() {
     day: 'numeric',
     month: 'short',
   });
-}
-
-function studentInitials(name) {
-  const parts = String(name ?? '')
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean);
-  if (!parts.length) return 'S';
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
 }
 
 function sessionStatusMeta({
@@ -263,6 +260,23 @@ function formatSessionElapsed(inStr, outStr) {
   return `${p(h)}:${p(m)}:${p(s)}`;
 }
 
+function toMoneyNumber(value) {
+  const n = Number(value ?? 0);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function uniqueSeatLabels(slots = []) {
+  const labels = [];
+  const seen = new Set();
+  for (const slot of slots) {
+    const seatKey = slot.seat_id != null ? `id:${slot.seat_id}` : `label:${slot.seat_number || 'unassigned'}`;
+    if (seen.has(seatKey)) continue;
+    seen.add(seatKey);
+    labels.push(slot.seat_number ? `Seat ${slot.seat_number}` : 'Seat not assigned');
+  }
+  return labels;
+}
+
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const { token, student, library, alerts, refreshMe } = useAuth();
@@ -274,6 +288,8 @@ export default function HomeScreen() {
   const [camPerm, requestCamPerm] = useCameraPermissions();
   const [holidays, setHolidays] = useState([]);
   const [monthRows, setMonthRows] = useState([]);
+  const [monthSummary, setMonthSummary] = useState(null);
+  const [feeSummary, setFeeSummary] = useState(null);
   const [clockTick, setClockTick] = useState(0);
 
   const status = library?.status;
@@ -316,8 +332,10 @@ export default function HomeScreen() {
   } = todaySession;
 
   const sessionOpen = Boolean(inStr && !outStr);
+  const canRecheckInWindow = !sessionOpen && allSlotsComplete && inCheckInWindow;
+  const showAllSlotsComplete = allSlotsComplete && !canRecheckInWindow;
   const canStartNextSlot =
-    !sessionOpen && !allSlotsComplete && !segmentDone && inCheckInWindow;
+    !sessionOpen && ((!allSlotsComplete && !segmentDone) || canRecheckInWindow) && inCheckInWindow;
   const canEarlyCheckOut = sessionOpen && !inCheckOutWindow;
   const canButtonCheckIn = allowButtonAttendance && open && canStartNextSlot;
   const canButtonCheckOut = allowButtonAttendance && sessionOpen && (inCheckOutWindow || canEarlyCheckOut);
@@ -344,8 +362,10 @@ export default function HomeScreen() {
     try {
       const data = await studentAttendance(token, ymNow());
       setMonthRows(data.rows);
+      setMonthSummary(data.summary ?? null);
     } catch {
       setMonthRows([]);
+      setMonthSummary(null);
     }
   }, [token]);
 
@@ -362,12 +382,23 @@ export default function HomeScreen() {
     }
   }, [token]);
 
+  const loadFeeSummary = useCallback(async () => {
+    if (!token) return;
+    try {
+      const data = await studentAllTimeFees(token);
+      setFeeSummary(data);
+    } catch {
+      setFeeSummary(null);
+    }
+  }, [token]);
+
   const refreshDashboard = useCallback(async () => {
     if (!token) return;
     await refreshMe();
     await loadMonthAttendance();
     await loadHolidays();
-  }, [token, refreshMe, loadMonthAttendance, loadHolidays]);
+    await loadFeeSummary();
+  }, [token, refreshMe, loadMonthAttendance, loadHolidays, loadFeeSummary]);
 
   useFocusEffect(
     useCallback(() => {
@@ -382,9 +413,9 @@ export default function HomeScreen() {
   }, [allowQrAttendance]);
 
   const perf = useMemo(() => {
-    const present = monthRows.filter((r) => r.status === 'present').length;
-    const total = monthRows.length;
-    const missed = monthRows.filter((r) => r.status === 'absent').length;
+    const present = monthSummary?.present_days ?? monthRows.filter((r) => r.status === 'present').length;
+    const total = monthSummary?.eligible_days ?? monthRows.length;
+    const missed = monthSummary?.missed_days ?? monthRows.filter((r) => r.status === 'absent').length;
     const pct = total > 0 ? Math.round((present / total) * 100) : 0;
     let badge = 'KEEP GOING';
     if (total === 0) badge = 'NO DATA YET';
@@ -392,7 +423,7 @@ export default function HomeScreen() {
     else if (pct >= 70) badge = 'GOOD PROGRESS';
     else if (pct >= 50) badge = 'ROOM TO IMPROVE';
     return { present, total, missed, pct, badge };
-  }, [monthRows]);
+  }, [monthRows, monthSummary]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -408,7 +439,7 @@ export default function HomeScreen() {
     if (!canButtonCheckIn) {
       if (openRow) {
         Alert.alert('Check-in', 'Check out your open time slot before starting another session.');
-      } else if (allSlotsComplete) {
+      } else if (showAllSlotsComplete) {
         Alert.alert('Check-in', 'You have completed all assigned time slots for today.');
       } else if (beforeCheckInWindow && displaySlot) {
         Alert.alert('Check-in', slotTimingLabel(displaySlot, 'check_in'));
@@ -471,7 +502,7 @@ export default function HomeScreen() {
         Alert.alert('QR attendance', slotTimingLabel(displaySlot, 'check_out'));
       } else if (beforeCheckInWindow && displaySlot) {
         Alert.alert('QR attendance', slotTimingLabel(displaySlot, 'check_in'));
-      } else if (allSlotsComplete) {
+      } else if (showAllSlotsComplete) {
         Alert.alert('QR attendance', 'You have completed all assigned time slots for today.');
       } else if (!open) {
         Alert.alert('QR attendance', status?.status_message || 'Library is currently closed.');
@@ -513,14 +544,16 @@ export default function HomeScreen() {
   }
 
   const hoursLine =
-    status?.opening_time && status?.closing_time
-      ? `Hours: ${status.opening_time} – ${status.closing_time}`
-      : 'Hours: — – —';
+    status?.is_24x7 || library?.is_24x7
+      ? 'Hours: Open 24x7'
+      : status?.opening_time && status?.closing_time
+        ? `Hours: ${status.opening_time} – ${status.closing_time}`
+        : 'Hours: — – —';
 
   const statusPillText =
     status?.status_message ?? (open ? 'Library is open.' : 'Library is closed.');
 
-  const readySubtitle = allSlotsComplete
+  const readySubtitle = showAllSlotsComplete
     ? 'All time slots complete for today'
     : sessionOpen
       ? waitingForCheckOut
@@ -538,7 +571,7 @@ export default function HomeScreen() {
               ? 'Waiting for your session window'
               : 'Check hours below';
 
-  const showQrCheckInCard = allowQrAttendance && !sessionOpen && !allSlotsComplete && canStartNextSlot;
+  const showQrCheckInCard = allowQrAttendance && !sessionOpen && !showAllSlotsComplete && canStartNextSlot;
   const showQrScannerPanel = allowQrAttendance && scannerOpen;
 
   const sessionMeta = sessionStatusMeta({
@@ -554,6 +587,14 @@ export default function HomeScreen() {
   const slotsTotalCount = slotsToday.length;
   const firstName = student?.name?.split(' ')[0] ?? 'Student';
   const libraryName = library?.name ?? 'Your library';
+  const assignedSlots = sortedSlots(student?.time_slots ?? []);
+  const assignedSeatLabels = uniqueSeatLabels(assignedSlots);
+  const currentSlotSeatLabels = uniqueSeatLabels(segment.length ? segment : displaySlot ? [displaySlot] : []);
+  const assignedMonthlyFee = assignedSlots.reduce((sum, slot) => sum + toMoneyNumber(slot.fee_amount), 0);
+  const totalDue = toMoneyNumber(feeSummary?.total_due);
+  const advancePaid = toMoneyNumber(feeSummary?.advance_balance ?? student?.advance_balance);
+  const totalPaid = toMoneyNumber(feeSummary?.total_paid);
+  const totalBilled = toMoneyNumber(feeSummary?.total_billed);
 
   return (
     <ScreenWithBanner>
@@ -580,20 +621,27 @@ export default function HomeScreen() {
               </Text>
               <Text style={styles.heroDate}>{formatTodayHeading()}</Text>
             </View>
-            <View style={styles.avatarRing}>
-              {student?.photo_url ? (
-                <Image source={{ uri: student.photo_url }} style={styles.avatarImg} />
-              ) : (
-                <View style={styles.avatarFallback}>
-                  <Text style={styles.avatarInitials}>{studentInitials(student?.name)}</Text>
-                </View>
-              )}
-            </View>
           </View>
           <View style={styles.heroMetaRow}>
+            <View style={[styles.heroMetaPill, open ? styles.heroMetaPillOpen : styles.heroMetaPillClosed]}>
+              <FontAwesome name={open ? 'unlock' : 'lock'} size={11} color="rgba(255,255,255,0.9)" />
+              <Text style={styles.heroMetaText}>{open ? 'Open now' : 'Closed now'}</Text>
+            </View>
+            <View style={styles.heroMetaPill}>
+              <FontAwesome name="clock-o" size={11} color="rgba(255,255,255,0.85)" />
+              <Text style={styles.heroMetaText}>{hoursLine.replace('Hours: ', '')}</Text>
+            </View>
             <View style={styles.heroMetaPill}>
               <FontAwesome name="id-card-o" size={11} color="rgba(255,255,255,0.85)" />
               <Text style={styles.heroMetaText}>{student?.login_id ?? '—'}</Text>
+            </View>
+            <View style={styles.heroMetaPill}>
+              <FontAwesome
+                name={allowQrAttendance && !allowButtonAttendance ? 'qrcode' : allowButtonAttendance && !allowQrAttendance ? 'hand-pointer-o' : 'exchange'}
+                size={11}
+                color="rgba(255,255,255,0.85)"
+              />
+              <Text style={styles.heroMetaText}>{attendanceModeShortLabel(attendanceMode)}</Text>
             </View>
             {student?.time_slots?.length ? (
               <View style={styles.heroMetaPill}>
@@ -604,6 +652,14 @@ export default function HomeScreen() {
               </View>
             ) : null}
           </View>
+          {!open ? (
+            <View style={styles.heroClosedReason}>
+              <FontAwesome name="info-circle" size={12} color="rgba(255,255,255,0.9)" />
+              <Text style={styles.heroClosedReasonText} numberOfLines={2}>
+                {statusPillText}
+              </Text>
+            </View>
+          ) : null}
         </View>
 
         <View style={styles.statRow}>
@@ -625,53 +681,6 @@ export default function HomeScreen() {
             value={slotsTotalCount ? `${slotsDoneCount}/${slotsTotalCount}` : '—'}
             accent={{ bg: TEAL_SOFT, fg: TEAL }}
           />
-        </View>
-
-        <View style={styles.statusCard}>
-          <View style={styles.statusCardHead}>
-            <View style={styles.statusTitleRow}>
-              <View style={styles.statusIconBox}>
-                <FontAwesome name="building" size={15} color={palette.primary} />
-              </View>
-              <View style={styles.statusTitleCol}>
-                <Text style={styles.statusOverline}>Library status</Text>
-                <Text style={styles.statusSub} numberOfLines={2}>
-                  {readySubtitle}
-                </Text>
-              </View>
-            </View>
-            <View style={[styles.openBadge, open ? styles.openBadgeOn : styles.openBadgeOff]}>
-              <View style={[styles.openBadgeDot, open ? styles.dotOn : styles.dotOff]} />
-              <Text style={[styles.openBadgeText, open ? styles.openBadgeTextOn : styles.openBadgeTextOff]}>
-                {open ? 'OPEN' : 'CLOSED'}
-              </Text>
-            </View>
-          </View>
-
-          <View style={styles.statusMessageBox}>
-            <Text style={styles.statusMessageText} numberOfLines={3}>
-              {statusPillText}
-            </Text>
-          </View>
-
-          <View style={styles.infoGrid}>
-            <View style={styles.infoCell}>
-              <FontAwesome name="clock-o" size={13} color={palette.textMuted} />
-              <Text style={styles.infoCellText} numberOfLines={2}>
-                {hoursLine.replace('Hours: ', '')}
-              </Text>
-            </View>
-            <View style={styles.infoCell}>
-              <FontAwesome
-                name={allowQrAttendance && !allowButtonAttendance ? 'qrcode' : allowButtonAttendance && !allowQrAttendance ? 'hand-pointer-o' : 'exchange'}
-                size={13}
-                color={palette.textMuted}
-              />
-              <Text style={styles.infoCellText} numberOfLines={2}>
-                {attendanceModeShortLabel(attendanceMode)}
-              </Text>
-            </View>
-          </View>
         </View>
 
         {(allowButtonAttendance || allowQrAttendance) ? (
@@ -711,22 +720,32 @@ export default function HomeScreen() {
                 <Text style={styles.sessionStatusText}>{sessionMeta.label}</Text>
               </View>
             </View>
-
-            <View style={styles.timerPanel}>
-              <View style={styles.timerRow}>
-                <View style={[styles.timerDot, sessionOpen && styles.timerDotLive, allSlotsComplete && styles.timerDotDone]} />
-                <Text style={styles.timerDigits}>{sessionClock}</Text>
+            <View style={styles.sessionCompactRow}>
+              <View style={styles.assignedCompactPanel}>
+                <View style={styles.assignedCompactIcon}>
+                  <FontAwesome name="map-marker" size={12} color={palette.primary} />
+                </View>
+                <View style={styles.assignedCompactText}>
+                  <Text style={styles.assignedCompactTitle} numberOfLines={1}>
+                    {currentSlotSeatLabels.length ? currentSlotSeatLabels.join(' · ') : 'Seat not assigned'}
+                  </Text>
+                  <Text style={styles.assignedCompactSub} numberOfLines={1}>
+                    {currentSlotSeatLabels.length ? 'Current seat' : 'Ask owner to assign seat'}
+                  </Text>
+                </View>
               </View>
-              <Text style={styles.timerCaption}>
-                {allSlotsComplete
-                  ? 'All slots completed for today'
-                  : sessionOpen
-                    ? 'Elapsed since check-in'
-                    : 'Session timer'}
-              </Text>
+              <View style={styles.timerCompactPanel}>
+                <View style={[styles.timerDot, sessionOpen && styles.timerDotLive, showAllSlotsComplete && styles.timerDotDone]} />
+                <View style={styles.timerCompactText}>
+                  <Text style={styles.timerCompactDigits}>{sessionClock}</Text>
+                  <Text style={styles.timerCompactCaption}>
+                    {showAllSlotsComplete ? 'Done' : sessionOpen ? 'Elapsed' : 'Timer'}
+                  </Text>
+                </View>
+              </View>
             </View>
 
-            {allSlotsComplete ? (
+            {showAllSlotsComplete ? (
               <Text style={styles.sessionHint}>Great work — you have finished all assigned time slots.</Text>
             ) : sessionOpen ? (
               <Text style={styles.sessionHint}>
@@ -750,7 +769,7 @@ export default function HomeScreen() {
               </Text>
             ) : null}
 
-            {allSlotsComplete ? (
+            {showAllSlotsComplete ? (
               <View style={styles.sessionDoneBadge}>
                 <FontAwesome name="check-circle" size={18} color={palette.success} />
                 <Text style={styles.sessionDoneText}>All done for today</Text>
@@ -809,7 +828,9 @@ export default function HomeScreen() {
           </View>
         ) : null}
 
-        {!allowButtonAttendance && allowQrAttendance && !sessionOpen && !allSlotsComplete ? (
+
+
+        {!allowButtonAttendance && allowQrAttendance && !sessionOpen && !showAllSlotsComplete ? (
           <View style={styles.modeInfoCard}>
             <FontAwesome name="info-circle" size={16} color={palette.primary} />
             <View style={styles.modeInfoTextCol}>
@@ -863,6 +884,30 @@ export default function HomeScreen() {
             </View>
           </View>
         ) : null}
+
+
+
+        <View style={[cardFlat(), styles.financeCard]}>
+          <SectionHeader title="Fees & advance" subtitle="Live billing status from your library" />
+          <View style={styles.financeGrid}>
+            <View style={[styles.financeTile, totalDue > 0 && styles.financeTileDue]}>
+              <Text style={styles.financeLabel}>Total due</Text>
+              <Text style={[styles.financeValue, totalDue > 0 ? styles.financeDueText : styles.financeOkText]}>
+                {formatInr(totalDue)}
+              </Text>
+            </View>
+            <View style={styles.financeTile}>
+              <Text style={styles.financeLabel}>Advance paid</Text>
+              <Text style={[styles.financeValue, advancePaid > 0 ? styles.financeAdvanceText : styles.financeMutedText]}>
+                {formatInr(advancePaid)}
+              </Text>
+            </View>
+          </View>
+          <View style={styles.financeMetaRow}>
+            <Text style={styles.financeMeta}>Paid: {formatInr(totalPaid)}</Text>
+            <Text style={styles.financeMeta}>Billed: {formatInr(totalBilled)}</Text>
+          </View>
+        </View>
 
         <View style={[cardFlat(), styles.perfCard]}>
           <SectionHeader title="Monthly attendance" subtitle="Overall presence this month" />
@@ -1038,18 +1083,6 @@ const styles = StyleSheet.create({
   heroGreet: { fontSize: 14, fontWeight: '600', color: 'rgba(255,255,255,0.82)' },
   heroTitle: { marginTop: 4, fontSize: 22, fontWeight: '800', color: '#fff', letterSpacing: -0.5, lineHeight: 28 },
   heroDate: { marginTop: 6, fontSize: 13, fontWeight: '500', color: 'rgba(255,255,255,0.72)' },
-  avatarRing: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.35)',
-    overflow: 'hidden',
-    backgroundColor: HERO_BOTTOM,
-  },
-  avatarImg: { width: '100%', height: '100%' },
-  avatarFallback: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.12)' },
-  avatarInitials: { fontSize: 16, fontWeight: '800', color: '#fff' },
   heroMetaRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: layout.space.lg, zIndex: 1 },
   heroMetaPill: {
     flexDirection: 'row',
@@ -1060,7 +1093,21 @@ const styles = StyleSheet.create({
     borderRadius: layout.radius.full,
     backgroundColor: 'rgba(255,255,255,0.12)',
   },
+  heroMetaPillOpen: { backgroundColor: 'rgba(16,185,129,0.26)' },
+  heroMetaPillClosed: { backgroundColor: 'rgba(248,113,113,0.24)' },
   heroMetaText: { fontSize: 11, fontWeight: '700', color: 'rgba(255,255,255,0.9)' },
+  heroClosedReason: {
+    zIndex: 1,
+    marginTop: 10,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 7,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: layout.radius.lg,
+    backgroundColor: 'rgba(248,113,113,0.18)',
+  },
+  heroClosedReasonText: { flex: 1, fontSize: 12, fontWeight: '700', color: 'rgba(255,255,255,0.92)', lineHeight: 17 },
   statRow: { flexDirection: 'row', gap: layout.space.sm, marginBottom: layout.space.sm },
   statTile: {
     flex: 1,
@@ -1141,6 +1188,65 @@ const styles = StyleSheet.create({
     borderColor: palette.borderSubtle,
   },
   infoCellText: { flex: 1, fontSize: 12, fontWeight: '600', color: palette.textSecondary, lineHeight: 17 },
+  financeCard: { padding: layout.space.xl, marginBottom: layout.space.md, ...shadow.sm },
+  financeGrid: { flexDirection: 'row', gap: layout.space.sm, marginTop: layout.space.md },
+  financeTile: {
+    flex: 1,
+    padding: layout.space.md,
+    borderRadius: layout.radius.lg,
+    backgroundColor: palette.surfaceMuted,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: palette.borderSubtle,
+  },
+  financeTileDue: { backgroundColor: palette.dangerSoft, borderColor: 'rgba(220, 38, 38, 0.18)' },
+  financeLabel: { fontSize: 11, fontWeight: '800', color: palette.textMuted, letterSpacing: 0.5, textTransform: 'uppercase' },
+  financeValue: { marginTop: 6, fontSize: 18, fontWeight: '900', color: palette.text, letterSpacing: -0.4 },
+  financeDueText: { color: palette.danger },
+  financeOkText: { color: palette.success },
+  financeAdvanceText: { color: palette.primary },
+  financeMutedText: { color: palette.textMuted },
+  financeMetaRow: { flexDirection: 'row', flexWrap: 'wrap', gap: layout.space.sm, marginTop: layout.space.md },
+  financeMeta: {
+    fontSize: 12,
+    color: palette.textSecondary,
+    fontWeight: '700',
+    backgroundColor: palette.surfaceMuted,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: layout.radius.full,
+  },
+  assignmentInline: { marginBottom: layout.space.md },
+  assignmentSummaryRow: { flexDirection: 'row', gap: layout.space.sm, marginTop: layout.space.md },
+  assignmentMiniTile: {
+    flex: 1,
+    padding: layout.space.md,
+    borderRadius: layout.radius.md,
+    backgroundColor: palette.surfaceMuted,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: palette.borderSubtle,
+  },
+  assignmentMiniLabel: { fontSize: 10, fontWeight: '800', color: palette.textMuted, letterSpacing: 0.4, textTransform: 'uppercase' },
+  assignmentMiniValue: { marginTop: 5, fontSize: 15, fontWeight: '900', color: palette.text },
+  assignmentList: {
+    marginTop: layout.space.md,
+    borderRadius: layout.radius.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: palette.borderSubtle,
+    overflow: 'hidden',
+  },
+  assignmentSlotRow: { flexDirection: 'row', alignItems: 'center', gap: layout.space.md, padding: layout.space.md, backgroundColor: palette.surfaceMuted },
+  assignmentSlotIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 10,
+    backgroundColor: palette.primarySoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  assignmentSlotText: { flex: 1, minWidth: 0 },
+  assignmentSlotTitle: { fontSize: 14, fontWeight: '800', color: palette.text },
+  assignmentSlotSub: { marginTop: 3, fontSize: 12, fontWeight: '600', color: palette.textMuted },
+  assignmentEmpty: { marginTop: layout.space.md, fontSize: 13, fontWeight: '600', color: palette.textMuted, lineHeight: 19 },
   sessionCard: {
     backgroundColor: palette.surface,
     borderRadius: layout.radius.xxl,
@@ -1184,6 +1290,50 @@ const styles = StyleSheet.create({
   timerDotDone: { backgroundColor: palette.success },
   timerDigits: { fontSize: 32, fontWeight: '800', letterSpacing: 1, color: palette.primary, fontVariant: ['tabular-nums'] },
   timerCaption: { marginTop: 6, fontSize: 12, color: palette.textMuted, fontWeight: '600' },
+  sessionCompactRow: {
+    flexDirection: 'row',
+    gap: layout.space.sm,
+    marginTop: layout.space.md,
+  },
+  assignedCompactPanel: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: layout.radius.lg,
+    backgroundColor: palette.surfaceMuted,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: palette.borderSubtle,
+  },
+  assignedCompactIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 10,
+    backgroundColor: palette.primarySoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  assignedCompactText: { flex: 1, minWidth: 0 },
+  assignedCompactTitle: { fontSize: 13, fontWeight: '900', color: palette.text },
+  assignedCompactSub: { marginTop: 2, fontSize: 11, fontWeight: '700', color: palette.textMuted },
+  timerCompactPanel: {
+    minWidth: 140,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: layout.radius.lg,
+    backgroundColor: palette.primarySoft,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(26, 54, 124, 0.14)',
+  },
+  timerCompactText: { flex: 1, minWidth: 0 },
+  timerCompactDigits: { fontSize: 17, fontWeight: '900', color: palette.primary, fontVariant: ['tabular-nums'] },
+  timerCompactCaption: { marginTop: 1, fontSize: 10, fontWeight: '800', color: palette.textMuted, textTransform: 'uppercase', letterSpacing: 0.5 },
   sessionHint: { marginTop: layout.space.md, fontSize: 12, color: palette.textMuted, fontWeight: '600', lineHeight: 18 },
   upcomingHint: { marginTop: layout.space.md, fontSize: 12, color: TEAL, fontWeight: '700', lineHeight: 18 },
   checkoutActions: { gap: 10, width: '100%' },

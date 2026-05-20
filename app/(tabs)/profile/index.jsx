@@ -1,6 +1,6 @@
 import { ScreenWithBanner } from '@/components/ScreenWithBanner';
 import { useAuth } from '@/context/AuthContext';
-import { getApiBaseUrl, resolveMediaCandidates } from '@/lib/config';
+import { resolveMediaCandidates } from '@/lib/config';
 import { formatInr } from '@/lib/format';
 import { card, cardFlat, layout, palette, shadow, typography } from '@/constants/Theme';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
@@ -77,42 +77,46 @@ export default function ProfileHomeScreen() {
               />
             ) : (
               <View style={styles.photoPlaceholder}>
-                <FontAwesome name="user" size={40} color={palette.primary} />
+                <FontAwesome name="user" size={24} color={palette.primary} />
               </View>
             )}
           </View>
-          <Text style={[typography.title, styles.name]}>{student?.name}</Text>
-          <Text style={[typography.caption, styles.loginId]}>{student?.login_id}</Text>
-          {library?.name ? (
-            <View style={styles.libPill}>
-              {libraryLogoUri ? (
-                <Image
-                  source={{ uri: libraryLogoUri }}
-                  style={styles.libLogo}
-                  contentFit="cover"
-                  onError={() =>
-                    setLibraryLogoIndex((prev) =>
-                      prev + 1 < libraryLogoCandidates.length ? prev + 1 : prev
-                    )
-                  }
-                />
-              ) : (
-                <FontAwesome name="university" size={12} color={palette.primaryDark} />
-              )}
-              <Text style={styles.lib}>{library.name}</Text>
+          <View style={styles.heroInfo}>
+            <Text style={styles.name} numberOfLines={1}>{student?.name}</Text>
+            <Text style={styles.loginId}>{student?.login_id}</Text>
+            <View style={styles.heroPills}>
+              {library?.name ? (
+                <View style={styles.libPill}>
+                  {libraryLogoUri ? (
+                    <Image
+                      source={{ uri: libraryLogoUri }}
+                      style={styles.libLogo}
+                      contentFit="cover"
+                      onError={() =>
+                        setLibraryLogoIndex((prev) =>
+                          prev + 1 < libraryLogoCandidates.length ? prev + 1 : prev
+                        )
+                      }
+                    />
+                  ) : (
+                    <FontAwesome name="university" size={11} color={palette.primaryDark} />
+                  )}
+                  <Text style={styles.lib} numberOfLines={1}>{library.name}</Text>
+                </View>
+              ) : null}
+              {student?.preparation ? (
+                <View style={styles.prepPill}>
+                  <FontAwesome name="graduation-cap" size={11} color={palette.primaryDark} />
+                  <Text style={styles.prepText} numberOfLines={1}>{student.preparation}</Text>
+                </View>
+              ) : null}
+              {dueAmount != null && dueAmount >= 0.01 ? (
+                <View style={styles.duePill}>
+                  <Text style={styles.due}>Due {formatInr(dueAmount)}</Text>
+                </View>
+              ) : null}
             </View>
-          ) : null}
-          {student?.preparation ? (
-            <View style={styles.prepPill}>
-              <FontAwesome name="graduation-cap" size={12} color={palette.primaryDark} />
-              <Text style={styles.prepText}>Preparing for {student.preparation}</Text>
-            </View>
-          ) : null}
-          {dueAmount != null && dueAmount >= 0.01 ? (
-            <View style={styles.duePill}>
-              <Text style={styles.due}>Due {formatInr(dueAmount)}</Text>
-            </View>
-          ) : null}
+          </View>
         </View>
 
         <Text style={[typography.overline, styles.menuLabel]}>Account</Text>
@@ -155,7 +159,6 @@ export default function ProfileHomeScreen() {
           <Text style={styles.logoutText}>Log out</Text>
         </Pressable>
 
-        <Text style={[typography.micro, styles.apiHint]}>{getApiBaseUrl()}</Text>
       </ScrollView>
     </ScreenWithBanner>
   );
@@ -167,85 +170,102 @@ const styles = StyleSheet.create({
     backgroundColor: palette.canvas,
   },
   hero: {
-    padding: layout.space.xl,
+    padding: layout.space.lg,
+    flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: layout.space.xl,
-  },
-  avatarWrap: {
+    gap: layout.space.md,
     marginBottom: layout.space.md,
   },
+  avatarWrap: {
+    alignSelf: 'flex-start',
+  },
   photo: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
-    borderWidth: 3,
+    width: 62,
+    height: 62,
+    borderRadius: 31,
+    borderWidth: 2,
     borderColor: palette.surface,
-    ...shadow.md,
+    ...shadow.sm,
   },
   photoPlaceholder: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
+    width: 62,
+    height: 62,
+    borderRadius: 31,
     backgroundColor: palette.primarySoft,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: palette.border,
   },
+  heroInfo: {
+    flex: 1,
+    minWidth: 0,
+  },
   name: {
-    textAlign: 'center',
+    fontSize: 18,
+    fontWeight: '800',
+    color: palette.text,
+    letterSpacing: -0.3,
   },
   loginId: {
-    marginTop: layout.space.xs,
-    textAlign: 'center',
+    marginTop: 2,
+    fontSize: 12,
+    fontWeight: '700',
+    color: palette.textMuted,
+  },
+  heroPills: {
+    marginTop: 8,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
   },
   libPill: {
-    marginTop: layout.space.md,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
     backgroundColor: palette.primarySoft,
-    paddingHorizontal: layout.space.md,
-    paddingVertical: 6,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
     borderRadius: layout.radius.full,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: 'rgba(37, 99, 235, 0.15)',
+    maxWidth: '100%',
   },
   lib: {
     color: palette.primaryDark,
-    fontWeight: '600',
-    fontSize: 13,
+    fontWeight: '700',
+    fontSize: 12,
+    maxWidth: 170,
   },
   libLogo: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: 'rgba(26, 54, 124, 0.18)',
     backgroundColor: palette.surface,
   },
   prepPill: {
-    marginTop: layout.space.sm,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
     backgroundColor: '#E9F5FF',
-    paddingHorizontal: layout.space.md,
-    paddingVertical: 6,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
     borderRadius: layout.radius.full,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: 'rgba(26, 54, 124, 0.18)',
   },
   prepText: {
     color: palette.primaryDark,
-    fontWeight: '600',
-    fontSize: 13,
+    fontWeight: '700',
+    fontSize: 12,
+    maxWidth: 150,
   },
   duePill: {
-    marginTop: layout.space.md,
     backgroundColor: palette.dangerSoft,
-    paddingHorizontal: layout.space.md,
-    paddingVertical: 6,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
     borderRadius: layout.radius.full,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: 'rgba(220, 38, 38, 0.12)',
@@ -253,25 +273,26 @@ const styles = StyleSheet.create({
   due: {
     color: palette.danger,
     fontWeight: '700',
-    fontSize: 13,
+    fontSize: 12,
   },
   menuLabel: {
-    marginBottom: layout.space.sm,
+    marginBottom: 6,
     marginLeft: 2,
   },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: layout.space.lg,
-    marginBottom: layout.space.sm,
-    gap: layout.space.md,
+    paddingHorizontal: layout.space.md,
+    paddingVertical: 12,
+    marginBottom: 8,
+    gap: 10,
   },
   rowPressed: {
     opacity: 0.92,
   },
   rowIcon: {
-    width: 36,
-    height: 36,
+    width: 32,
+    height: 32,
     borderRadius: 10,
     backgroundColor: palette.primarySoft,
     alignItems: 'center',
@@ -279,18 +300,19 @@ const styles = StyleSheet.create({
   },
   rowText: {
     flex: 1,
-    fontSize: 16,
-    fontWeight: '500',
+    fontSize: 14,
+    fontWeight: '700',
     color: palette.text,
     letterSpacing: -0.2,
   },
   logoutBtn: {
-    marginTop: layout.space.lg,
+    marginTop: layout.space.sm,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: layout.space.sm,
-    padding: layout.space.lg,
+    paddingVertical: 12,
+    paddingHorizontal: layout.space.md,
     borderRadius: layout.radius.md,
     backgroundColor: palette.dangerSoft,
     borderWidth: StyleSheet.hairlineWidth,
@@ -299,11 +321,6 @@ const styles = StyleSheet.create({
   logoutText: {
     color: palette.danger,
     fontWeight: '700',
-    fontSize: 16,
-  },
-  apiHint: {
-    marginTop: layout.space.xl,
-    textAlign: 'center',
-    paddingHorizontal: layout.space.lg,
+    fontSize: 14,
   },
 });

@@ -6,6 +6,7 @@ import { useEffect, useRef } from 'react';
 import { Alert } from 'react-native';
 
 const DUE_ALERT_KEY_PREFIX = 'student_due_alert_seen_v1';
+const SECURE_STORE_KEY_SAFE = /[^A-Za-z0-9._-]/g;
 
 function todayKey() {
   const now = new Date();
@@ -18,6 +19,12 @@ function todayKey() {
 function dueFromAlert(alert) {
   const amount = Number(alert?.meta?.total_due);
   return Number.isFinite(amount) ? amount : 0;
+}
+
+function secureStoreKeyPart(value, fallback) {
+  const raw = String(value ?? '').trim();
+  const safe = raw.replace(SECURE_STORE_KEY_SAFE, '_');
+  return safe || fallback;
 }
 
 export function DailyDueAlert() {
@@ -36,7 +43,11 @@ export function DailyDueAlert() {
     const timer = setTimeout(() => {
       void (async () => {
         const studentKey = student.id || student.login_id || 'student';
-        const storageKey = `${DUE_ALERT_KEY_PREFIX}:${studentKey}:${todayKey()}`;
+        const storageKey = [
+          DUE_ALERT_KEY_PREFIX,
+          secureStoreKeyPart(studentKey, 'student'),
+          todayKey(),
+        ].join('_');
         const alreadySeen = await SecureStore.getItemAsync(storageKey);
         if (cancelled || alreadySeen) return;
 
@@ -63,7 +74,9 @@ export function DailyDueAlert() {
             },
           ],
         );
-      })();
+      })().catch((e) => {
+        console.warn('[due-alert] could not show due alert', e);
+      });
     }, 1800);
 
     return () => {

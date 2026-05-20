@@ -9,6 +9,14 @@ dist/
 web-build/
 expo-env.d.ts
 
+# build artifacts
+build/
+release/
+*.apk
+*.aab
+*.ipa
+*.apks
+
 # Native
 .kotlin/
 *.orig.*
@@ -31,6 +39,9 @@ yarn-error.*
 *.pem
 
 # local env files
+.env
+.env.*
+!.env.example
 .env*.local
 
 # typescript

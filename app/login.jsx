@@ -228,30 +228,6 @@ export default function LoginScreen() {
               </Text>
             </View>
 
-            <Pressable
-              style={({ pressed }) => [
-                styles.browseLibraries,
-                pressed && styles.browseLibrariesPressed,
-              ]}
-              onPress={() => router.push("/libraries")}
-              accessibilityRole="link"
-              accessibilityLabel="Browse public libraries without signing in"
-            >
-              <FontAwesome
-                name="map-marker"
-                size={16}
-                color={palette.primary}
-                style={styles.browseIcon}
-              />
-              <Text style={styles.browseLibrariesText}>
-                Find libraries near you
-              </Text>
-              <FontAwesome
-                name="angle-right"
-                size={16}
-                color={palette.textMuted}
-              />
-            </Pressable>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -430,32 +406,5 @@ const styles = StyleSheet.create({
   },
   trustTextPad: {
     marginLeft: layout.space.sm,
-  },
-  browseLibraries: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: layout.space.lg,
-    paddingVertical: layout.space.md,
-    paddingHorizontal: layout.space.md,
-    borderRadius: layout.radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: palette.border,
-    backgroundColor: palette.surfaceMuted,
-  },
-  browseIcon: {
-    marginRight: layout.space.sm,
-  },
-  browseLibrariesPressed: {
-    opacity: 0.85,
-    backgroundColor: palette.primarySoft,
-  },
-  browseLibrariesText: {
-    flex: 1,
-    marginRight: layout.space.sm,
-    fontSize: 15,
-    fontWeight: "600",
-    color: palette.primary,
-    letterSpacing: -0.2,
   },
 });

@@ -1,6 +1,7 @@
 import { getApiBaseUrl } from '@/lib/config';
 import type {
   AttendanceRow,
+  AttendanceSummary,
   HolidayRow,
   Library,
   LibraryDirectoryArea,
@@ -215,7 +216,7 @@ export function studentQrPunch(
 
 export function studentAttendance(token: string, month?: string) {
   const q = month ? `?month=${encodeURIComponent(month)}` : '';
-  return studentFetch<{ month: string; rows: AttendanceRow[] }>(
+  return studentFetch<{ month: string; rows: AttendanceRow[]; summary?: AttendanceSummary }>(
     `/student/attendance${q}`,
     { token, method: 'GET' },
   );
