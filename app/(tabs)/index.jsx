@@ -78,16 +78,20 @@ function formatTodayHeading() {
 function sessionStatusMeta({
   open,
   allSlotsComplete,
+  canRecheckInWindow,
   sessionOpen,
   beforeCheckInWindow,
   segmentDone,
   inCheckInWindow,
 }) {
-  if (allSlotsComplete) {
+  if (allSlotsComplete && !canRecheckInWindow) {
     return { label: 'Complete', tone: 'success', icon: 'check-circle' };
   }
   if (sessionOpen) {
     return { label: 'In session', tone: 'active', icon: 'play-circle' };
+  }
+  if (canRecheckInWindow) {
+    return { label: 'Ready', tone: 'ready', icon: 'sign-in' };
   }
   if (beforeCheckInWindow) {
     return { label: 'Upcoming', tone: 'warn', icon: 'clock-o' };
@@ -164,6 +168,14 @@ function findRelevantChain(timeSlots, todayRows) {
     }
     if (nowM < checkInOpensMinutes(segment[0])) {
       return { chain, segment, first: segment[0] };
+    }
+  }
+
+  for (const chain of chains) {
+    const segment = activeChainSegment(chain, todayRows);
+    if (segment.length) continue;
+    if (isCheckInWindowForChain(chain, nowM)) {
+      return { chain, segment: chain, first: chain[0] ?? null };
     }
   }
 
@@ -563,6 +575,8 @@ export default function HomeScreen() {
           : `Checked in — ${slotDisplayName(displaySlot)}`
       : beforeCheckInWindow
         ? `Upcoming — ${chainLabel} · ${checkInOpensLabel}`
+        : canRecheckInWindow
+          ? `Ready again — ${chainLabel}`
         : segmentDone
           ? `Session done — ${chainLabel}`
           : open && inCheckInWindow
@@ -577,6 +591,7 @@ export default function HomeScreen() {
   const sessionMeta = sessionStatusMeta({
     open,
     allSlotsComplete,
+    canRecheckInWindow,
     sessionOpen,
     beforeCheckInWindow,
     segmentDone,

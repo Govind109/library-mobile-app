@@ -1,5 +1,21 @@
 /** Minutes before slot start/end when punch actions become available. */
 export const PUNCH_EARLY_MINUTES = 10;
+const DAY_MINUTES = 24 * 60;
+
+function normalizeMinutes(value: number): number {
+  return ((value % DAY_MINUTES) + DAY_MINUTES) % DAY_MINUTES;
+}
+
+function isWithinDailyWindow(nowM: number, startsM: number, endsM: number, includeEnd = false): boolean {
+  const now = normalizeMinutes(nowM);
+  const start = normalizeMinutes(startsM);
+  const end = normalizeMinutes(endsM);
+  if (start === end) return true;
+  if (start < end) {
+    return includeEnd ? now >= start && now <= end : now >= start && now < end;
+  }
+  return includeEnd ? now >= start || now <= end : now >= start || now < end;
+}
 
 export function slotMinutes(t: string | null | undefined): number {
   const s = String(t ?? '').slice(0, 5);
@@ -13,17 +29,18 @@ export function minutesNow(): number {
 }
 
 export function formatMinutesAsHi(t: number): string {
-  const h = Math.floor(t / 60) % 24;
-  const m = t % 60;
+  const normalized = normalizeMinutes(t);
+  const h = Math.floor(normalized / 60);
+  const m = normalized % 60;
   return `${`${h}`.padStart(2, '0')}:${`${m}`.padStart(2, '0')}`;
 }
 
 export function checkInOpensMinutes(slot: { slot_start?: string | null }): number {
-  return slotMinutes(slot.slot_start) - PUNCH_EARLY_MINUTES;
+  return normalizeMinutes(slotMinutes(slot.slot_start) - PUNCH_EARLY_MINUTES);
 }
 
 export function checkOutOpensMinutes(slot: { slot_end?: string | null }): number {
-  return slotMinutes(slot.slot_end) - PUNCH_EARLY_MINUTES;
+  return normalizeMinutes(slotMinutes(slot.slot_end) - PUNCH_EARLY_MINUTES);
 }
 
 export function isCheckInWindow(
@@ -32,7 +49,7 @@ export function isCheckInWindow(
 ): boolean {
   const opens = checkInOpensMinutes(slot);
   const end = slotMinutes(slot.slot_end);
-  return nowM >= opens && nowM < end;
+  return isWithinDailyWindow(nowM, opens, end);
 }
 
 export function isCheckOutWindow(
@@ -41,7 +58,7 @@ export function isCheckOutWindow(
 ): boolean {
   const opens = checkOutOpensMinutes(slot);
   const end = slotMinutes(slot.slot_end);
-  return nowM >= opens && nowM <= end;
+  return isWithinDailyWindow(nowM, opens, end, true);
 }
 
 export function sortedSlots<T extends { slot_start?: string | null }>(timeSlots: T[]): T[] {
@@ -119,7 +136,7 @@ export function isCheckInWindowForChain(
   if (!chain.length) return false;
   const first = chain[0];
   const last = chain[chain.length - 1];
-  return nowM >= checkInOpensMinutes(first) && nowM < slotMinutes(last.slot_end);
+  return isWithinDailyWindow(nowM, checkInOpensMinutes(first), slotMinutes(last.slot_end));
 }
 
 export function isFullCheckOutWindowForChain(
