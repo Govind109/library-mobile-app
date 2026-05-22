@@ -55,6 +55,7 @@ export interface Library {
   weekly_off_days: string[];
   is_24x7?: boolean;
   attendance_mode?: 'button_only' | 'qr_only' | 'both' | string;
+  feature_access?: Record<string, boolean>;
   status: LibraryStatus;
 }
 

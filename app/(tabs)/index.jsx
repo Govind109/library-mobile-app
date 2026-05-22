@@ -310,8 +310,13 @@ export default function HomeScreen() {
     () => normalizeAttendanceMode(library?.attendance_mode),
     [library?.attendance_mode],
   );
-  const allowButtonAttendance = attendanceModeAllowsButton(attendanceMode);
-  const allowQrAttendance = attendanceModeAllowsQr(attendanceMode);
+  const featureAccess = library?.feature_access && typeof library.feature_access === 'object' ? library.feature_access : {};
+  const featureEnabled = useCallback(
+    (key) => !featureAccess || featureAccess[key] !== false,
+    [featureAccess],
+  );
+  const allowButtonAttendance = attendanceModeAllowsButton(attendanceMode) && featureEnabled('attendance_manual');
+  const allowQrAttendance = attendanceModeAllowsQr(attendanceMode) && featureEnabled('attendance_qr');
 
   useEffect(() => {
     const id = setInterval(() => setClockTick((t) => t + 1), 30000);
@@ -460,7 +465,7 @@ export default function HomeScreen() {
       } else if (!open) {
         Alert.alert('Check-in', status?.status_message || 'Library is currently closed.');
       } else if (!allowButtonAttendance) {
-        Alert.alert('Attendance mode', 'This library accepts attendance only via QR scan.');
+        Alert.alert('Attendance unavailable', featureEnabled('attendance_manual') ? 'This library accepts attendance only via QR scan.' : 'Button attendance is not enabled for this library plan.');
       }
       return;
     }
@@ -488,7 +493,7 @@ export default function HomeScreen() {
       } else if (!sessionOpen) {
         Alert.alert('Check-out', 'Check in first before checking out.');
       } else if (!allowButtonAttendance) {
-        Alert.alert('Attendance mode', 'Direct check-out is disabled. Use Scan to Check-Out.');
+        Alert.alert('Attendance unavailable', featureEnabled('attendance_manual') ? 'Direct check-out is disabled. Use Scan to Check-Out.' : 'Button attendance is not enabled for this library plan.');
       }
       return;
     }
@@ -519,7 +524,7 @@ export default function HomeScreen() {
       } else if (!open) {
         Alert.alert('QR attendance', status?.status_message || 'Library is currently closed.');
       } else if (!allowQrAttendance) {
-        Alert.alert('Attendance mode', 'This library accepts attendance only via the check-in button.');
+        Alert.alert('QR attendance unavailable', featureEnabled('attendance_qr') ? 'This library accepts attendance only via the check-in button.' : 'QR attendance is not enabled for this library plan.');
       }
       return;
     }
@@ -656,7 +661,9 @@ export default function HomeScreen() {
                 size={11}
                 color="rgba(255,255,255,0.85)"
               />
-              <Text style={styles.heroMetaText}>{attendanceModeShortLabel(attendanceMode)}</Text>
+              <Text style={styles.heroMetaText}>
+                {allowButtonAttendance && allowQrAttendance ? 'Button + QR' : allowQrAttendance ? 'QR scan' : allowButtonAttendance ? 'Button only' : 'Attendance off'}
+              </Text>
             </View>
             {student?.time_slots?.length ? (
               <View style={styles.heroMetaPill}>
