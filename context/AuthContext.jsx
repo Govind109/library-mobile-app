@@ -9,10 +9,17 @@ import React, {
 } from 'react';
 import { AppState } from 'react-native';
 
-import { ApiError, studentLogin, studentLogout, studentMe } from '@/lib/api/studentApi';
+import {
+  ApiError,
+  studentConnectLibrary,
+  studentEmailLogin,
+  studentLogout,
+  studentMe,
+} from '@/lib/api/studentApi';
 import { getDevicePushToken, registerStudentPushToken } from '@/lib/pushNotifications';
 
 const TOKEN_KEY = 'student_api_token';
+const STUDENT_APP_MODE_KEY = 'student_app_mode';
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
@@ -21,13 +28,23 @@ export function AuthProvider({ children }) {
   const [student, setStudent] = useState(null);
   const [library, setLibrary] = useState(null);
   const [alerts, setAlerts] = useState([]);
+  const [studentPreferredMode, setStudentPreferredMode] = useState('study');
 
-  const hydrate = useCallback(async (stored) => {
+  const clearSessionState = useCallback(() => {
+    setToken(null);
+    setStudent(null);
+    setLibrary(null);
+    setAlerts([]);
+    setStudentPreferredMode('study');
+  }, []);
+
+  const hydrate = useCallback(async () => {
+    const storedMode = await SecureStore.getItemAsync(STUDENT_APP_MODE_KEY);
+    setStudentPreferredMode(storedMode === 'library' ? 'library' : 'study');
+
+    const stored = await SecureStore.getItemAsync(TOKEN_KEY);
     if (!stored) {
-      setToken(null);
-      setStudent(null);
-      setLibrary(null);
-      setAlerts([]);
+      clearSessionState();
       return;
     }
     try {
@@ -41,20 +58,16 @@ export function AuthProvider({ children }) {
       if (e instanceof ApiError && e.status === 401) {
         await SecureStore.deleteItemAsync(TOKEN_KEY);
       }
-      setToken(null);
-      setStudent(null);
-      setLibrary(null);
-      setAlerts([]);
+      clearSessionState();
     }
-  }, []);
+  }, [clearSessionState]);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const stored = await SecureStore.getItemAsync(TOKEN_KEY);
         if (cancelled) return;
-        await hydrate(stored);
+        await hydrate();
       } finally {
         if (!cancelled) setReady(true);
       }
@@ -72,6 +85,20 @@ export function AuthProvider({ children }) {
     setAlerts(me.alerts ?? []);
   }, [token]);
 
+  const applyStudentSession = useCallback(async (data, preferredMode = null) => {
+    await SecureStore.setItemAsync(TOKEN_KEY, data.token);
+    if (preferredMode) {
+      await SecureStore.setItemAsync(STUDENT_APP_MODE_KEY, preferredMode);
+      setStudentPreferredMode(preferredMode);
+    }
+    setToken(data.token);
+    setStudent(data.student);
+    setLibrary(data.library);
+    setAlerts(data.alerts ?? []);
+    void registerStudentPushToken(data.token);
+    return data;
+  }, []);
+
   useEffect(() => {
     if (!token) return;
     const subscription = AppState.addEventListener('change', (state) => {
@@ -85,25 +112,19 @@ export function AuthProvider({ children }) {
     };
   }, [token, refreshMe]);
 
-  const login = useCallback(async (loginId, password) => {
-    // Grab the device push token before the login request so the backend
-    // can store it in the same round-trip — no separate /device-token call needed.
+  const emailStudentAuth = useCallback(async (payload) => {
     const deviceToken = await getDevicePushToken();
-    if (!deviceToken) {
-      console.warn('[push] no device token available during login; backend cannot store FCM token');
-    }
-    const data = await studentLogin(loginId, password, deviceToken);
-    if (deviceToken && data.push_token_registered === false) {
-      console.warn('[push] backend login did not store the supplied device token');
-    }
-    await SecureStore.setItemAsync(TOKEN_KEY, data.token);
-    setToken(data.token);
-    setStudent(data.student);
-    setLibrary(data.library);
-    setAlerts(data.alerts ?? []);
-    // Keep the post-login call as a fallback for token refreshes / app resumes.
-    void registerStudentPushToken(data.token);
-  }, []);
+    const data = await studentEmailLogin(payload, deviceToken);
+    await applyStudentSession(data, 'study');
+    return data;
+  }, [applyStudentSession]);
+
+  const connectStudentLibrary = useCallback(async (loginId, password) => {
+    if (!token) throw new Error('Student session is not ready.');
+    const data = await studentConnectLibrary(token, loginId, password);
+    await applyStudentSession(data, 'library');
+    return data;
+  }, [applyStudentSession, token]);
 
   const logout = useCallback(async () => {
     const t = token;
@@ -115,11 +136,9 @@ export function AuthProvider({ children }) {
       }
     }
     await SecureStore.deleteItemAsync(TOKEN_KEY);
-    setToken(null);
-    setStudent(null);
-    setLibrary(null);
-    setAlerts([]);
-  }, [token]);
+    await SecureStore.deleteItemAsync(STUDENT_APP_MODE_KEY);
+    clearSessionState();
+  }, [clearSessionState, token]);
 
   const value = useMemo(
     () => ({
@@ -128,11 +147,13 @@ export function AuthProvider({ children }) {
       student,
       library,
       alerts,
-      login,
+      studentPreferredMode,
+      emailStudentAuth,
+      connectStudentLibrary,
       logout,
       refreshMe,
     }),
-    [token, ready, student, library, alerts, login, logout, refreshMe],
+    [token, ready, student, library, alerts, studentPreferredMode, emailStudentAuth, connectStudentLibrary, logout, refreshMe],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

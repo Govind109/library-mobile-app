@@ -2,7 +2,7 @@
   "expo": {
     "name": "KYPS Library",
     "slug": "library-student",
-    "version": "1.0.0",
+    "version": "1.0.6",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "mobileapp",
@@ -24,7 +24,7 @@
     "android": {
       "package": "com.kypsapp.library",
       "googleServicesFile": "./google-services.json",
-      "versionCode": 2,
+      "versionCode": 8,
       "usesCleartextTraffic": true,
       "permissions": [
         "com.google.android.gms.permission.AD_ID",
@@ -35,6 +35,7 @@
         "backgroundColor": "#002B5B"
       },
       "edgeToEdgeEnabled": true,
+      "softwareKeyboardLayoutMode": "resize",
       "predictiveBackGestureEnabled": false
     },
     "web": {
@@ -45,7 +46,17 @@
     "extra": {
       "apiBaseUrl": "http://192.168.31.239:8000/api",
       "firebaseProjectId": "kypsapp-library",
+      "apiKey": "AIzaSyAX6T62F6uy1kvaRhBsBZp6jWdho5pSc44",
+      "authDomain": "kypsapp-library.firebaseapp.com",
+      "projectId": "kypsapp-library",
+      "storageBucket": "kypsapp-library.firebasestorage.app",
+      "messagingSenderId": "120638727691",
+      "appId": "1:120638727691:web:0d8e0ac58675714820c90e",
+      "measurementId": "G-B95SW94560",
       "showGoogleAds": true,
+      "webClientId": "",
+      "androidClientId": "",
+      "iosClientId": "",
       "router": {},
       "eas": {
         "projectId": "f40c8647-1e28-4287-8f09-c6e651d2b79f"

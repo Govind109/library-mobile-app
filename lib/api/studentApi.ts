@@ -25,18 +25,61 @@ export class ApiError extends Error {
   }
 }
 
-function extractMessage(status: number, body: unknown): string {
-  if (typeof body === 'string' && body.trim()) return body;
+function defaultSafeMessage(status: number): string {
+  if (status === 401) return 'Your session has expired. Please sign in again.';
+  if (status === 403) return 'You do not have permission to perform this action.';
+  if (status === 404) return 'The requested information was not found.';
+  if (status === 422) return 'Please check the details and try again.';
+  if (status >= 500) return 'Something went wrong. Please try again later.';
+  return 'Request could not be completed. Please try again.';
+}
+
+function looksTechnical(message: string): boolean {
+  const text = message.toLowerCase();
+  return [
+    'token',
+    'jwt',
+    'unauthenticated',
+    'sqlstate',
+    'exception',
+    'stack trace',
+    'undefined variable',
+    'argument #',
+    'syntax error',
+    'server error',
+    'internal server error',
+    'request failed',
+    'bearer',
+    'authorization',
+    'fcm_token',
+    'expo_push_token',
+    'database',
+    'queryexception',
+    'typeerror',
+    'errorexception',
+    'file:',
+    'line:',
+  ].some((needle) => text.includes(needle));
+}
+
+function cleanMessage(status: number, message: string): string {
+  const trimmed = String(message || '').trim();
+  if (!trimmed || looksTechnical(trimmed)) return defaultSafeMessage(status);
+  return trimmed;
+}
+
+export function extractSafeApiMessage(status: number, body: unknown): string {
+  if (typeof body === 'string' && body.trim()) return cleanMessage(status, body);
   if (body && typeof body === 'object') {
     const o = body as Record<string, unknown>;
-    if (typeof o.message === 'string' && o.message) return o.message;
+    if (typeof o.message === 'string' && o.message) return cleanMessage(status, o.message);
     const errors = o.errors;
     if (errors && typeof errors === 'object') {
       const first = Object.values(errors as Record<string, string[]>)[0];
-      if (Array.isArray(first) && first[0]) return String(first[0]);
+      if (Array.isArray(first) && first[0]) return cleanMessage(status, String(first[0]));
     }
   }
-  return `Request failed (${status})`;
+  return defaultSafeMessage(status);
 }
 
 export async function studentFetch<T>(
@@ -54,13 +97,13 @@ export async function studentFetch<T>(
     headers.set('Authorization', `Bearer ${token}`);
   }
 
-  const res = await fetch(url, { ...rest, headers });
+  const res = await fetch(url, { ...rest, headers, cache: rest.cache ?? 'no-store' });
   const contentType = res.headers.get('content-type') || '';
   const isJson = contentType.includes('application/json');
   const body = isJson ? await res.json().catch(() => ({})) : await res.text();
 
   if (!res.ok) {
-    throw new ApiError(extractMessage(res.status, body), res.status, body);
+    throw new ApiError(extractSafeApiMessage(res.status, body), res.status, body);
   }
 
   return body as T;
@@ -96,6 +139,97 @@ export function studentLogin(
       ...(deviceToken ?? {}),
     }),
   });
+}
+
+export function studentGoogleAuth(
+  idToken: string,
+  deviceToken?: { fcm_token: string; platform: 'android' | 'ios' | 'unknown' } | null,
+) {
+  return studentFetch<LoginResponse>('/student/google-auth', {
+    skipAuth: true,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      id_token: idToken,
+      ...(deviceToken ?? {}),
+    }),
+  });
+}
+
+export function requestEmailOtp(payload: {
+  account_type: 'student';
+  purpose: 'student_register';
+  email: string;
+}) {
+  return studentFetch<{ message: string }>('/email-otp/request', {
+    skipAuth: true,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+}
+
+export function studentEmailRegister(
+  payload: {
+    name: string;
+    email: string;
+    password: string;
+    password_confirmation: string;
+    otp: string;
+  },
+  deviceToken?: { fcm_token: string; platform: 'android' | 'ios' | 'unknown' } | null,
+) {
+  return studentFetch<LoginResponse>('/student/email-register', {
+    skipAuth: true,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      ...payload,
+      ...(deviceToken ?? {}),
+    }),
+  });
+}
+
+export function studentEmailLogin(
+  payload: {
+    email: string;
+    password: string;
+  },
+  deviceToken?: { fcm_token: string; platform: 'android' | 'ios' | 'unknown' } | null,
+) {
+  return studentFetch<LoginResponse>('/student/email-login', {
+    skipAuth: true,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      ...payload,
+      ...(deviceToken ?? {}),
+    }),
+  });
+}
+
+export function studentConnectLibrary(token: string, loginId: string, password: string) {
+  return studentFetch<LoginResponse & { message?: string }>('/student/connect-library', {
+    token,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      login_id: loginId,
+      password,
+    }),
+  });
+}
+
+export function studentUpdateSelfStudy(token: string, payload: Record<string, unknown>) {
+  return studentFetch<{ message: string; student: Student; self_study_profile: Record<string, unknown> }>(
+    '/student/self-study',
+    {
+      token,
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    },
+  );
 }
 
 export interface MeResponse {

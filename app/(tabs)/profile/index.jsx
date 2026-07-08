@@ -6,14 +6,21 @@ import { card, cardFlat, layout, palette, shadow, typography } from '@/constants
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function ProfileHomeScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { student, library, alerts, logout } = useAuth();
+  const { student, library, alerts, logout, refreshMe } = useAuth();
+
+  useFocusEffect(
+    useCallback(() => {
+      void refreshMe();
+    }, [refreshMe]),
+  );
 
   const paymentDue = alerts.find((a) => a.type === 'payment_due');
   const studentPhotoCandidates = useMemo(

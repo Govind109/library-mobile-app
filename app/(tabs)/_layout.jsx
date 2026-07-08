@@ -1,6 +1,8 @@
 import { useAuth } from '@/context/AuthContext';
+import { StudentAppModeProvider, useStudentAppMode } from '@/context/StudentAppModeContext';
 import { TabAppOpenAdListener } from '@/components/TabAppOpenAdListener';
 import { BrandedTabHeader } from '@/components/BrandedTabHeader';
+import { StudentModeSwitch } from '@/components/StudentModeSwitch';
 import { palette } from '@/constants/Theme';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { BottomTabBar } from '@react-navigation/bottom-tabs';
@@ -13,8 +15,7 @@ function TabBarIcon(props) {
 }
 
 export default function TabLayout() {
-  const { token, ready } = useAuth();
-  const insets = useSafeAreaInsets();
+  const { token, ready, student, library, studentPreferredMode } = useAuth();
 
   if (!ready) {
     return (
@@ -28,12 +29,26 @@ export default function TabLayout() {
     return <Redirect href="/login" />;
   }
 
+  const libraryConnected = Boolean(library || student?.library);
+
+  return (
+    <StudentAppModeProvider initialMode={studentPreferredMode}>
+      <StudentTabs libraryConnected={libraryConnected} />
+    </StudentAppModeProvider>
+  );
+}
+
+function StudentTabs({ libraryConnected }) {
+  const insets = useSafeAreaInsets();
+  const { studentMode } = useStudentAppMode();
+
   const headerCommon = {
     headerStyle: styles.header,
     headerShadowVisible: false,
     headerTintColor: palette.onPrimary,
     headerTitleAlign: 'left',
     headerTitleContainerStyle: styles.headerTitleContainer,
+    headerRight: () => <StudentModeSwitch />,
   };
 
   return (
@@ -64,14 +79,42 @@ export default function TabLayout() {
         <Tabs.Screen
           name="index"
           options={{
-            headerTitle: () => <BrandedTabHeader screenTitle="Dashboard" />,
-            title: 'Dashboard',
-            tabBarIcon: ({ color }) => <TabBarIcon name="th-large" color={color} />,
+            headerTitle: () => <BrandedTabHeader screenTitle={studentMode === 'library' ? 'My Library' : 'Self Study'} />,
+            title: studentMode === 'library' ? 'Library' : 'Study',
+            tabBarIcon: ({ color }) => <TabBarIcon name={studentMode === 'library' ? 'building-o' : 'gamepad'} color={color} />,
+          }}
+        />
+        <Tabs.Screen
+          name="syllabus"
+          options={{
+            href: studentMode === 'study' ? undefined : null,
+            headerTitle: () => <BrandedTabHeader screenTitle="Syllabus" />,
+            title: 'Syllabus',
+            tabBarIcon: ({ color }) => <TabBarIcon name="book" color={color} />,
+          }}
+        />
+        <Tabs.Screen
+          name="study-dates"
+          options={{
+            href: studentMode === 'study' ? undefined : null,
+            headerTitle: () => <BrandedTabHeader screenTitle="Dates" />,
+            title: 'Dates',
+            tabBarIcon: ({ color }) => <TabBarIcon name="calendar-check-o" color={color} />,
+          }}
+        />
+        <Tabs.Screen
+          name="study-profile"
+          options={{
+            href: studentMode === 'study' ? undefined : null,
+            headerTitle: () => <BrandedTabHeader screenTitle="Study Profile" />,
+            title: 'Profile',
+            tabBarIcon: ({ color }) => <TabBarIcon name="user-circle" color={color} />,
           }}
         />
         <Tabs.Screen
           name="attendance"
           options={{
+            href: libraryConnected && studentMode === 'library' ? undefined : null,
             headerTitle: () => <BrandedTabHeader screenTitle="Attendance" />,
             title: 'Attendance',
             tabBarIcon: ({ color }) => <TabBarIcon name="calendar" color={color} />,
@@ -80,6 +123,7 @@ export default function TabLayout() {
         <Tabs.Screen
           name="fees"
           options={{
+            href: libraryConnected && studentMode === 'library' ? undefined : null,
             headerTitle: () => <BrandedTabHeader screenTitle="Fees" />,
             title: 'Fees',
             tabBarIcon: ({ color }) => <TabBarIcon name="money" color={color} />,
@@ -88,6 +132,7 @@ export default function TabLayout() {
         <Tabs.Screen
           name="notices"
           options={{
+            href: libraryConnected && studentMode === 'library' ? undefined : null,
             headerTitle: () => <BrandedTabHeader screenTitle="Notices" />,
             title: 'Notices',
             tabBarIcon: ({ color }) => <TabBarIcon name="bell" color={color} />,
@@ -97,6 +142,7 @@ export default function TabLayout() {
         <Tabs.Screen
           name="profile"
           options={{
+            href: libraryConnected && studentMode === 'library' ? undefined : null,
             title: 'Profile',
             headerShown: false,
             tabBarIcon: ({ color }) => <TabBarIcon name="user" color={color} />,
@@ -121,8 +167,8 @@ const styles = StyleSheet.create({
     minHeight: 72,
   },
   headerTitleContainer: {
-    maxWidth: '78%',
-    width: '78%',
+    maxWidth: '48%',
+    width: '48%',
   },
   tabBar: {
     backgroundColor: palette.surface,

@@ -28,7 +28,7 @@ function formatNoticeTime(value) {
 }
 
 export default function NoticesScreen() {
-  const { token } = useAuth();
+  const { token, refreshMe } = useAuth();
   const [rows, setRows] = useState([]);
   const [page, setPage] = useState(1);
   const [lastPage, setLastPage] = useState(1);
@@ -60,7 +60,14 @@ export default function NoticesScreen() {
       (async () => {
         setLoading(true);
         try {
-          await loadPage(1, false);
+          try {
+            await refreshMe();
+          } catch {
+            // Keep the last notice list when profile refresh fails.
+          }
+          if (!cancelled) {
+            await loadPage(1, false);
+          }
         } finally {
           if (!cancelled) setLoading(false);
         }
@@ -68,7 +75,7 @@ export default function NoticesScreen() {
       return () => {
         cancelled = true;
       };
-    }, [loadPage]),
+    }, [loadPage, refreshMe]),
   );
 
   const onRefresh = useCallback(async () => {

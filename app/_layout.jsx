@@ -1,6 +1,7 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { AdMobBootstrap } from '@/components/AdMobBootstrap';
+import { CustomAlertProvider } from '@/components/CustomAlertProvider';
 import { DailyDueAlert } from '@/components/DailyDueAlert';
 import { AuthProvider } from '@/context/AuthContext';
 import { palette } from '@/constants/Theme';
@@ -104,25 +105,28 @@ function RootLayoutNav() {
   return (
     <ThemeProvider value={navigationTheme}>
       <AuthProvider>
-        <AdMobBootstrap />
-        <DailyDueAlert />
-        <Stack>
-          <Stack.Screen name="index" options={{ headerShown: false }} />
-          <Stack.Screen name="login" options={{ headerShown: false }} />
-          <Stack.Screen
-            name="libraries"
-            options={{
-              headerShown: false,
-            }}
-          />
-          <Stack.Screen
-            name="library-detail"
-            options={{
-              headerShown: false,
-            }}
-          />
-          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        </Stack>
+        <CustomAlertProvider>
+          <AdMobBootstrap />
+          <DailyDueAlert />
+          <Stack>
+            <Stack.Screen name="index" options={{ headerShown: false }} />
+            <Stack.Screen name="login" options={{ headerShown: false }} />
+            <Stack.Screen
+              name="libraries"
+              options={{
+                headerShown: false,
+              }}
+            />
+            <Stack.Screen
+              name="library-detail"
+              options={{
+                headerShown: false,
+              }}
+            />
+            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+            <Stack.Screen name="student-tools" options={{ headerShown: false }} />
+          </Stack>
+        </CustomAlertProvider>
       </AuthProvider>
     </ThemeProvider>
   );

@@ -1,6 +1,7 @@
 import { ScreenWithBanner } from '@/components/ScreenWithBanner';
 import { useAuth } from '@/context/AuthContext';
 import { studentAttendance } from '@/lib/api/studentApi';
+import { useStudentScreenRefresh } from '@/lib/useStudentScreenRefresh';
 import { shiftMonth, ymNow } from '@/lib/format';
 import { cardFlat, layout, palette, typography } from '@/constants/Theme';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
@@ -77,20 +78,16 @@ export default function AttendanceScreen() {
     setMonthSummary(data.summary ?? null);
   }, [token, month]);
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      setLoading(true);
-      try {
-        await load();
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
+  const refreshScreen = useCallback(async () => {
+    setLoading(true);
+    try {
+      await load();
+    } finally {
+      setLoading(false);
+    }
   }, [load]);
+
+  useStudentScreenRefresh(refreshScreen, [refreshScreen]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);

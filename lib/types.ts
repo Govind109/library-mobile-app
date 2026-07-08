@@ -44,6 +44,15 @@ export interface LibraryStatus {
   is_24x7?: boolean;
 }
 
+export interface LibraryAccessStatus {
+  trial_ends_at: string | null;
+  in_trial: boolean;
+  paid_active: boolean;
+  period_end: string | null;
+  plan_label: string | null;
+  service_active: boolean;
+}
+
 export interface Library {
   id: number;
   name: string;
@@ -56,6 +65,7 @@ export interface Library {
   is_24x7?: boolean;
   attendance_mode?: 'button_only' | 'qr_only' | 'both' | string;
   feature_access?: Record<string, boolean>;
+  access_status?: LibraryAccessStatus;
   status: LibraryStatus;
 }
 

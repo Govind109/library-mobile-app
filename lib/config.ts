@@ -17,6 +17,52 @@ export function getApiBaseUrl(): string {
   return 'https://example.invalid/api';
 }
 
+type GoogleAuthClientIds = {
+  webClientId: string;
+  androidClientId: string;
+  iosClientId: string;
+};
+
+type FirebaseWebConfig = {
+  apiKey: string;
+  authDomain: string;
+  projectId: string;
+  storageBucket: string;
+  messagingSenderId: string;
+  appId: string;
+  measurementId: string;
+};
+
+function extraValue(key: keyof GoogleAuthClientIds): string {
+  const extra = Constants.expoConfig?.extra as Partial<GoogleAuthClientIds> | undefined;
+  return typeof extra?.[key] === 'string' ? String(extra[key]).trim() : '';
+}
+
+export function getGoogleAuthClientIds(): GoogleAuthClientIds {
+  return {
+    webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID?.trim() || extraValue('webClientId'),
+    androidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID?.trim() || extraValue('androidClientId'),
+    iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID?.trim() || extraValue('iosClientId'),
+  };
+}
+
+function firebaseExtraValue(key: keyof FirebaseWebConfig): string {
+  const extra = Constants.expoConfig?.extra as Partial<FirebaseWebConfig> | undefined;
+  return typeof extra?.[key] === 'string' ? String(extra[key]).trim() : '';
+}
+
+export function getFirebaseWebConfig(): FirebaseWebConfig {
+  return {
+    apiKey: process.env.EXPO_PUBLIC_FIREBASE_WEB_API_KEY?.trim() || firebaseExtraValue('apiKey'),
+    authDomain: process.env.EXPO_PUBLIC_FIREBASE_WEB_AUTH_DOMAIN?.trim() || firebaseExtraValue('authDomain'),
+    projectId: process.env.EXPO_PUBLIC_FIREBASE_WEB_PROJECT_ID?.trim() || firebaseExtraValue('projectId'),
+    storageBucket: process.env.EXPO_PUBLIC_FIREBASE_WEB_STORAGE_BUCKET?.trim() || firebaseExtraValue('storageBucket'),
+    messagingSenderId: process.env.EXPO_PUBLIC_FIREBASE_WEB_MESSAGING_SENDER_ID?.trim() || firebaseExtraValue('messagingSenderId'),
+    appId: process.env.EXPO_PUBLIC_FIREBASE_WEB_APP_ID?.trim() || firebaseExtraValue('appId'),
+    measurementId: process.env.EXPO_PUBLIC_FIREBASE_WEB_MEASUREMENT_ID?.trim() || firebaseExtraValue('measurementId'),
+  };
+}
+
 /** Laravel app origin (without `/api`). */
 export function apiOrigin(): string {
   return getApiBaseUrl().replace(/\/api\/?$/i, '');

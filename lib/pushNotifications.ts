@@ -9,6 +9,7 @@ const ANDROID_REMINDERS_CHANNEL = 'reminders';
 const ANDROID_BILLING_CHANNEL = 'billing';
 
 const PUSH_TOKEN_CACHE_KEY = 'student_local_push_token_v1';
+const STUDY_NUDGE_IDS_KEY = 'student_study_nudge_ids_v1';
 
 type CachedPushPayload = {
   fcm_token: string;
@@ -279,6 +280,176 @@ export async function registerStudentPushToken(apiToken: string): Promise<void> 
     if (!saved) console.info('[push] token registration not saved');
   } catch (error) {
     console.warn('[push] token registration failed before API call', error);
+  }
+}
+
+type StudySubject = {
+  title?: string;
+  chapters?: Array<{
+    title?: string;
+    done?: boolean;
+    next_revision_date?: string | null;
+  }>;
+};
+
+type StudySyllabus = {
+  title?: string;
+  subjects?: StudySubject[];
+};
+
+type ImportantDate = {
+  title?: string;
+  date?: string | null;
+  type?: string | null;
+};
+
+type StudyProfile = {
+  reading_streak?: number;
+  syllabus_progress?: number;
+  today_minutes?: number;
+  exam_name?: string | null;
+  exam_date?: string | null;
+  physical_training_date?: string | null;
+  important_dates?: ImportantDate[];
+  syllabi?: StudySyllabus[];
+  subjects?: StudySubject[];
+};
+
+function localYmd(): string {
+  const d = new Date();
+  const p = (n: number) => `${n}`.padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
+function daysUntilYmd(value?: string | null): number | null {
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const [year, month, day] = value.split('-').map(Number);
+  const target = new Date(year, month - 1, day);
+  if (target.getFullYear() !== year || target.getMonth() !== month - 1 || target.getDate() !== day) return null;
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return Math.ceil((target.getTime() - today.getTime()) / 86400000);
+}
+
+function importantDatesFromProfile(profile: StudyProfile): ImportantDate[] {
+  if (Array.isArray(profile.important_dates) && profile.important_dates.length) {
+    return profile.important_dates.filter((item) => item.title && item.date);
+  }
+  const dates: ImportantDate[] = [];
+  if (profile.exam_date) {
+    dates.push({ title: profile.exam_name || 'Exam', date: profile.exam_date, type: 'exam' });
+  }
+  if (profile.physical_training_date) {
+    dates.push({ title: 'Physical training', date: profile.physical_training_date, type: 'physical' });
+  }
+  return dates;
+}
+
+function nearestImportantDate(profile: StudyProfile): (ImportantDate & { days: number }) | null {
+  return importantDatesFromProfile(profile)
+    .map((item) => ({ ...item, days: daysUntilYmd(item.date) }))
+    .filter((item): item is ImportantDate & { days: number } => item.days !== null && item.days >= 0)
+    .sort((a, b) => a.days - b.days)[0] || null;
+}
+
+function studyNudgeBodies(profile: StudyProfile): string[] {
+  const subjects = Array.isArray(profile.syllabi) && profile.syllabi.length
+    ? profile.syllabi.flatMap((syllabus) => (Array.isArray(syllabus.subjects) ? syllabus.subjects : []))
+    : Array.isArray(profile.subjects) ? profile.subjects : [];
+  const today = localYmd();
+  const subjectStats = subjects.map((subject) => {
+    const chapters = Array.isArray(subject.chapters) ? subject.chapters : [];
+    const done = chapters.filter((chapter) => chapter.done).length;
+    const due = chapters.filter((chapter) => chapter.next_revision_date && chapter.next_revision_date <= today).length;
+    return {
+      title: String(subject.title || 'subject').trim() || 'subject',
+      total: chapters.length,
+      done,
+      due,
+    };
+  });
+  const weak = subjectStats
+    .filter((subject) => subject.total > 0)
+    .sort((a, b) => (a.done / Math.max(1, a.total)) - (b.done / Math.max(1, b.total)))[0];
+  const due = subjectStats.find((subject) => subject.due > 0);
+  const onlySubject = subjectStats.length === 1 ? subjectStats[0] : null;
+  const streak = Number(profile.reading_streak ?? 0);
+  const progress = Number(profile.syllabus_progress ?? 0);
+  const nearestDate = nearestImportantDate(profile);
+  const messages = [
+    'Hero entry tabhi hogi jab aaj ka chapter complete hoga. Chalo, scene shuru karo.',
+    'Bas 15 minute padh lo. Picture abhi baaki hai, champion.',
+    'Aaj ka comeback scene ready hai. Ek chapter tick karo aur XP le jao.',
+  ];
+
+  if (nearestDate) {
+    const text = nearestDate.days === 0 ? 'aaj' : nearestDate.days === 1 ? 'kal' : `${nearestDate.days} din mein`;
+    const title = String(nearestDate.title || 'Important date').trim() || 'Important date';
+    messages.unshift(`${title} ${text} hai. Ab hero wali mehnat, villain wali distraction band.`);
+  }
+  if (due) {
+    messages.unshift(`${due.title} revision due hai. Bhai, interval ke baad story bhoolni nahi.`);
+  }
+  if (weak) {
+    messages.unshift(`${weak.title} thoda villain ban raha hai. Aaj isko hero wali entry do.`);
+  }
+  if (onlySubject) {
+    messages.unshift(`Khali ${onlySubject.title} padhke exam nikal loge kya? Thoda balance bhi chahiye, boss.`);
+  }
+  if (streak <= 0) {
+    messages.unshift('Streak zero? Koi nahi. Aaj se apni blockbuster comeback story start.');
+  } else if (streak >= 7) {
+    messages.unshift(`${streak} din ki winning streak chal rahi hai. Isko flop mat hone do.`);
+  }
+  if (progress >= 70) {
+    messages.unshift(`Syllabus ${progress}% complete. Climax paas hai, rukna mana hai.`);
+  }
+
+  return messages;
+}
+
+export async function scheduleSelfStudyNudges(profile: StudyProfile): Promise<void> {
+  if (Platform.OS === 'web') return;
+  try {
+    const Notifications = await import('expo-notifications');
+    const finalStatus = await requestNotificationPermissions(Notifications);
+    if (finalStatus !== 'granted') return;
+    if (Platform.OS === 'android') await configureAndroidChannels(Notifications);
+
+    const previousRaw = await SecureStore.getItemAsync(STUDY_NUDGE_IDS_KEY);
+    if (previousRaw) {
+      try {
+        const ids = JSON.parse(previousRaw);
+        if (Array.isArray(ids)) {
+          await Promise.all(ids.map((id) => Notifications.cancelScheduledNotificationAsync(String(id))));
+        }
+      } catch {
+        /* ignore invalid cache */
+      }
+    }
+
+    const bodies = studyNudgeBodies(profile);
+    const offsets = [2 * 60 * 60, 7 * 60 * 60, 24 * 60 * 60];
+    const ids: string[] = [];
+    for (let i = 0; i < offsets.length; i += 1) {
+      const body = bodies[i % bodies.length];
+      const id = await Notifications.scheduleNotificationAsync({
+        content: {
+          title: 'KYPS Study Reminder',
+          body,
+          sound: 'default',
+          data: { screen: 'Dashboard', type: 'self_study_nudge' },
+        },
+        trigger: {
+          seconds: offsets[i],
+          channelId: ANDROID_REMINDERS_CHANNEL,
+        },
+      });
+      ids.push(id);
+    }
+    await SecureStore.setItemAsync(STUDY_NUDGE_IDS_KEY, JSON.stringify(ids));
+  } catch (e) {
+    console.warn('[push] self-study nudges failed', e);
   }
 }
 

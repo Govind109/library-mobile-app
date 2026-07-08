@@ -1,4 +1,5 @@
 import { BrandedTabHeader } from '@/components/BrandedTabHeader';
+import { StudentModeSwitch } from '@/components/StudentModeSwitch';
 import { palette } from '@/constants/Theme';
 import { Stack } from 'expo-router';
 import { StyleSheet } from 'react-native';
@@ -12,6 +13,7 @@ export default function ProfileStackLayout() {
         headerShadowVisible: false,
         headerTintColor: palette.onPrimary,
         headerBackTitle: '',
+        headerRight: () => <StudentModeSwitch />,
         contentStyle: { backgroundColor: palette.canvas },
       }}>
       <Stack.Screen

@@ -1,10 +1,11 @@
 import { ScreenWithBanner } from '@/components/ScreenWithBanner';
 import { useAuth } from '@/context/AuthContext';
 import { studentAllTimeFees, studentMonthlyFees } from '@/lib/api/studentApi';
+import { useStudentScreenRefresh } from '@/lib/useStudentScreenRefresh';
 import { formatInrErp, formatMonthDisplay, shiftMonth, ymNow } from '@/lib/format';
 import { layout, palette, shadow, typography } from '@/constants/Theme';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -50,20 +51,16 @@ export default function FeesScreen() {
     setSummary(all);
   }, [token, month]);
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      setLoading(true);
-      try {
-        await load();
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
+  const refreshScreen = useCallback(async () => {
+    setLoading(true);
+    try {
+      await load();
+    } finally {
+      setLoading(false);
+    }
   }, [load]);
+
+  useStudentScreenRefresh(refreshScreen, [refreshScreen]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
